@@ -63,7 +63,7 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 ROOT = '.'
 
 dataset_configs = {
-    'CIFAR100': {
+    'CIFAR-100': {
         # Training hyperparameters
         'batch_size': 128,
         'num_epochs': 200,
@@ -92,8 +92,8 @@ dataset_configs = {
 
 
         # Experimental robustness parameters
-        'num_datasets': 4,              # number of dataset variants
-        'num_models_per_dataset': 4,    # number of models trained on each dataset variant
+        'num_datasets': 3,              # number of dataset variants
+        'num_models_per_dataset': 3,    # number of models trained on each dataset variant
 
         # Hardness estimation
         'num_models_for_hardness': 10,  # ensemble size used to compute hardness in train_baseline_models.py

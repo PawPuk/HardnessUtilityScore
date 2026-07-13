@@ -75,9 +75,9 @@ def load_dataset(
         shuffle: bool = False,
         apply_augmentation: bool = False
 ) -> Tuple[DataLoader[IndexedDataset], IndexedDataset, DataLoader[IndexedDataset], IndexedDataset]:
-    """Load the dataset giving control over shuffling and augmentation. Currently only supports CIFAR100.
+    """Load the dataset giving control over shuffling and augmentation. Currently only supports CIFAR-100.
 
-    :param dataset_name: Name of the dataset to load (only accepts `CIFAR100`).
+    :param dataset_name: Name of the dataset to load (only accepts `CIFAR-100`).
     :param shuffle: Raise this flag to shuffle the training dataset.
     :param apply_augmentation: Raise this flag to apply data augmentation to the training set.
 
@@ -86,7 +86,7 @@ def load_dataset(
     config = get_config(dataset_name)
 
     train_transform, test_transform = get_transform(apply_augmentation, config)
-    if dataset_name == 'CIFAR100':
+    if dataset_name == 'CIFAR-100':
         training_set = torchvision.datasets.CIFAR100(root=os.path.join(ROOT, 'data'), download=True,
                                                      transform=train_transform)
         test_set = torchvision.datasets.CIFAR100(root=os.path.join(ROOT, 'data'), train=False, download=True,
