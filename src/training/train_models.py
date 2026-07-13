@@ -66,7 +66,7 @@ class ModelTrainer:
             self.num_models_to_train_per_dataset = self.config['num_models_per_dataset']
             self.dataset_count = self.config['num_datasets']
 
-        self.save_dir = os.path.join(self.config['save_dir'], resampling_ratio, dataset_name)
+        self.save_dir = os.path.join(self.config['save_dir'], f"{resampling_ratio:.2f}", dataset_name)
         os.makedirs(self.save_dir, exist_ok=True)
 
     def train_model(
