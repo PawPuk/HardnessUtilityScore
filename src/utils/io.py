@@ -43,15 +43,12 @@ def save_in_hoc_hardness_estimates(in_hoc_hardness_estimates: Dict[Tuple[int, in
         pickle.dump(old_in_hoc_hardness_estimates, file)
 
 
-def load_hardness_estimates(dataset_name: str, hardness_estimator: str, num_models_for_hardness: int) -> List[float]:
-    """Load hardness estimates (output only for specific hardness estimator and a single scalar per data sample)."""
-    path = os.path.join(ROOT, 'Results', dataset_name, 'hardness_estimates.pkl')
+def load_in_hoc_hardness_estimates(dataset_name: str) -> List[List[float]]:
+    """Load hardness estimates."""
+    path = os.path.join(ROOT, 'Results', dataset_name, 'in_hoc_hardness_estimates.pkl')
     hardness_estimates = load_results(path)
-    hardness_over_models = [hardness_estimates[(0, model_id)][hardness_estimator]
-                            for model_id in range(len(hardness_estimates))]
-    n = min(len(hardness_estimates), num_models_for_hardness)
-    final_hardness_estimates = list(np.mean(np.array(hardness_over_models[:n]), axis=0))
-    return final_hardness_estimates
+    hardness_over_models = [hardness_estimates[(0, model_id)] for model_id in range(len(hardness_estimates))]
+    return hardness_over_models
 
 
 def load_sample_allocations(hardness_save_dir: str, dataset_name: str) -> Dict[float, List[int]]:
