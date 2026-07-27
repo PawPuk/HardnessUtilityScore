@@ -10,7 +10,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 from src.config.config import get_config, ROOT
-from src.data.datasets import AugmentedSubset, IndexedDataset
+from src.data.datasets import AugmentedSubset, IndexedDataset, SyntheticImageDataset
 
 
 def perform_data_augmentation(
@@ -70,7 +70,7 @@ def get_dataloader(
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2, worker_init_fn=worker_init_fn)
 
 
-def load_dataset(
+def load_real_dataset(
         dataset_name: str,
         shuffle: bool = False,
         apply_augmentation: bool = False
@@ -101,3 +101,22 @@ def load_dataset(
     test_loader = get_dataloader(test_set, config['batch_size'])
 
     return training_loader, training_set, test_loader, test_set
+
+
+def load_synthetic_dataset(
+        dataset_name: str,
+        generative_model: str
+) -> DataLoader[IndexedDataset]:
+    config = get_config(dataset_name)
+    _, transform = get_transform(False, config)
+    path = os.path.join(ROOT, 'synthetic_data', dataset_name, generative_model)
+
+    if dataset_name == 'CIFAR-100':
+        synthetic_set = SyntheticImageDataset(path, transform=transform)
+    else:
+        raise Exception
+
+    synthetic_set = IndexedDataset(synthetic_set, True)
+    synthetic_loader = get_dataloader(synthetic_set, config['batch_size'] * 2)
+
+    return synthetic_loader

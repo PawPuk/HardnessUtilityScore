@@ -1,7 +1,6 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 
 import torch
-import torchvision
 
 from src.config.config import DEVICE
 from src.models.neural_networks import ResNet18LowRes
@@ -27,41 +26,36 @@ def compute_AUM(
         in_hoc_hardness_estimates[dataset_model_id][i][epoch] = correct_logit - max_other_logit
 
 
-def compute_confidences(
-        model_states: List[Any],
-        images: List[torch.Tensor],
-        class_id: int,
-        num_classes: int,
-        mean: Tuple[float, float, float],
-        std: Tuple[float, float, float],
-        batch_size: int = 1024
-) -> List[float]:
-    """Estimate hardness through confidence. This is used in data-resampling.py when using hEDM or aEDM to estimate the
-    hardness of real and synthetic samples"""
-    num_samples, avg_confidences = len(images), []
+def compute_margins(
+    model: ResNet18LowRes,
+    data_loader: torch.utils.data.DataLoader,
+) -> Dict[int, List[float]]:
+    """
+    Compute margin for each sample: logit(true_label) - max_{c != true_label} logit(c).
+    Returns a dictionary mapping each class index to a list of margins for that class.
+    """
+    model.eval()
+    margins_by_class = {}
 
-    for batch_start in range(0, num_samples, batch_size):
-        batch_end = min(batch_start + batch_size, num_samples)
-        batch_images = images[batch_start:batch_end]
+    with torch.no_grad():
+        for images, labels, _ in data_loader:
+            images = images.to(DEVICE)
+            labels = labels.to(DEVICE)
 
-        normalize = torchvision.transforms.Normalize(mean=mean, std=std)
-        normalized_images = [normalize(img) for img in batch_images]
-        batch_normalized_images = torch.stack(normalized_images).to(DEVICE)  # Shape: [B, 3, 32, 32]
+            logits = model(images)  # [batch_size, num_classes]
 
-        # For each model, compute confidence
-        batch_confidences = torch.zeros(batch_normalized_images.size(0), device=DEVICE)
-        for model_state in model_states:
-            model = ResNet18LowRes(num_classes)
-            model.load_state_dict(model_state)
-            model = model.to(DEVICE)
-            model.eval()
-            with torch.no_grad():
-                logits = model(batch_normalized_images)
-                probs = torch.nn.functional.softmax(logits, dim=1)
-                conf = probs[:, class_id]  # confidence for true class
-                batch_confidences += conf  # accumulate per model
+            # Logits for the true class
+            correct_logits = logits.gather(1, labels.unsqueeze(1)).squeeze(1)
 
-        batch_confidences /= len(model_states)  # average confidence across models
-        avg_confidences.extend(batch_confidences.cpu().tolist())
+            # Mask out the true class to get max among all others
+            masked_logits = logits.clone()
+            masked_logits.scatter_(1, labels.unsqueeze(1), -float('inf'))
+            max_other, _ = masked_logits.max(dim=1)
 
-    return avg_confidences
+            batch_margins = correct_logits - max_other  # [batch_size]
+
+            # Append each margin to its class list
+            for margin, label in zip(batch_margins.cpu().tolist(), labels.cpu().tolist()):
+                margins_by_class.setdefault(int(label), []).append(margin)
+
+    return margins_by_class

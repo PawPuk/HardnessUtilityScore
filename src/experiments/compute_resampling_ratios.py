@@ -1,7 +1,6 @@
 """
 This module takes the in_hoc_hardness_estimates.pkl obtained by running src/experiments/estimate_hardness_in_hoc.py and
-performs the stability analysis to identify how the class-level estimates vary based on the model initialization (which
-affected AUM).
+computes the resampling ratios for the downstream task of hardness-based resampling.
 """
 
 import argparse
@@ -11,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.config.config import get_config
-from src.data.loading import load_dataset
+from src.data.loading import load_real_dataset
 from src.utils.evaluation import compute_sample_allocation_for_resampling
 from src.utils.io import load_in_hoc_hardness_estimates
 from src.utils.reproducibility import set_reproducibility
@@ -31,13 +30,11 @@ def plot_individual_hardness(all_class_level_AUMs, num_classes):
 
 
 def main(dataset_name: str):
-    test = json.load(open('oversampling_targets.json'))
-    print(test)
     config = get_config(dataset_name)
     num_classes = config['num_classes']
     num_training_samples = config['num_training_samples']
 
-    training_loader, training_set, _, _ = load_dataset(dataset_name)
+    training_loader, training_set, _, _ = load_real_dataset(dataset_name)
     labels = []
     for i in range(len(training_set)):
         labels.append(training_set[i][1].item())
@@ -60,7 +57,7 @@ def main(dataset_name: str):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
+    parser = argparse.ArgumentParser(description='Compute resampling ratios for Hardness Based Resampling.')
     parser.add_argument('--dataset_name', type=str, required=True,
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
 

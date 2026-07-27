@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.config.config import get_config
-from src.data.loading import load_dataset
+from src.data.loading import load_real_dataset
 from src.utils.io import load_in_hoc_hardness_estimates
 from src.utils.reproducibility import set_reproducibility
 
@@ -33,7 +33,7 @@ def main(dataset_name: str):
     num_classes = config['num_classes']
     num_training_samples = config['num_training_samples']
 
-    training_loader, training_set, _, _ = load_dataset(dataset_name)
+    training_loader, training_set, _, _ = load_real_dataset(dataset_name)
     labels = []
     for i in range(len(training_set)):
         labels.append(training_set[i][1].item())
@@ -57,7 +57,7 @@ def main(dataset_name: str):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
+    parser = argparse.ArgumentParser(description='Analyse the in-hoc hardness estimates (specifically, AUM).')
     parser.add_argument('--dataset_name', type=str, required=True,
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
 

@@ -5,12 +5,12 @@ These estimates will later be used to compute the resampling ratios for our Hard
 
 import argparse
 
-from src.data.loading import load_dataset
+from src.data.loading import load_real_dataset
 from src.training.train_models import ModelTrainer
 
 
 def main(dataset_name: str):
-    training_loader, training_set, test_loader, _ = load_dataset(dataset_name, True, True)
+    training_loader, training_set, test_loader, _ = load_real_dataset(dataset_name, True, True)
     training_set_size = len(training_set)
     training_loaders = [training_loader]
 

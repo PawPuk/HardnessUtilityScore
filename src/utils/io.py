@@ -1,10 +1,9 @@
+import glob
 import os
 import pickle
 from typing import Dict, List, Tuple, Union
 
-import numpy as np
-
-from src.config.config import ROOT
+from src.config.config import ROOT, get_config
 
 
 def load_results(path: str):
@@ -49,6 +48,23 @@ def load_in_hoc_hardness_estimates(dataset_name: str) -> List[List[float]]:
     hardness_estimates = load_results(path)
     hardness_over_models = [hardness_estimates[(0, model_id)] for model_id in range(len(hardness_estimates))]
     return hardness_over_models
+
+
+def extract_paths_to_pretrained_models(dataset_name: str):
+    config = get_config(dataset_name)
+    base_path = os.path.join(ROOT, config['save_dir'], f"{0.00:.2f}", dataset_name)
+    pattern = os.path.join(base_path, f'dataset_*_model_*_epoch_{config["num_epochs"]}.pth')
+
+    model_paths = {}
+    for filepath in glob.glob(pattern):
+        filename = os.path.basename(filepath)
+        # Extract indices: dataset_X_model_Y_epoch_Z.pth
+        parts = filename.split('_')
+        d_idx = int(parts[1])  # after 'dataset'
+        m_idx = int(parts[3])  # after 'model'
+        model_paths.setdefault(d_idx, {})[m_idx] = filepath
+
+    return model_paths
 
 
 def load_sample_allocations(hardness_save_dir: str, dataset_name: str) -> Dict[float, List[int]]:
