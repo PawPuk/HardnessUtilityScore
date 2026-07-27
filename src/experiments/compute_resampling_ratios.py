@@ -1,16 +1,18 @@
 """
 This module takes the in_hoc_hardness_estimates.pkl obtained by running src/experiments/estimate_hardness_in_hoc.py and
-identifies the ideal resampling ratios. It also performs basic analysis of stability of resampling ratios in regard to
-the model initialization (which affected AUM)
+performs the stability analysis to identify how the class-level estimates vary based on the model initialization (which
+affected AUM).
 """
 
 import argparse
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from src.config.config import get_config
 from src.data.loading import load_dataset
+from src.utils.evaluation import compute_sample_allocation_for_resampling
 from src.utils.io import load_in_hoc_hardness_estimates
 from src.utils.reproducibility import set_reproducibility
 
@@ -20,16 +22,17 @@ def plot_individual_hardness(all_class_level_AUMs, num_classes):
     for idx, class_means in enumerate(all_class_level_AUMs):
         plt.plot(range(num_classes), class_means, alpha=0.5, label=f'Estimate {idx+1}')
     plt.xlabel('Class index')
-    plt.ylabel('Class-level hardness (AUM)')
-    plt.title('Individual class-level hardness estimates from 9 runs')
+    plt.ylabel('Class cardinalities for resampling')
+    plt.title('Individual class cardinalities for resampling')
     plt.grid(True, linestyle=':', alpha=0.5)
     plt.legend(ncol=3)
     plt.tight_layout()
-    plt.savefig('individual_AUM_stability.pdf', dpi=150)
-    plt.show()
+    plt.savefig('resampling_counts_stability.pdf', dpi=150)
 
 
 def main(dataset_name: str):
+    test = json.load(open('oversampling_targets.json'))
+    print(test)
     config = get_config(dataset_name)
     num_classes = config['num_classes']
     num_training_samples = config['num_training_samples']
@@ -38,23 +41,22 @@ def main(dataset_name: str):
     labels = []
     for i in range(len(training_set)):
         labels.append(training_set[i][1].item())
-    assert [labels.count(i) for i in range(num_classes)] == num_training_samples  # Sanity check.
     labels = np.array(labels)
 
     in_hoc_hardness_estimates = load_in_hoc_hardness_estimates(dataset_name)
     set_reproducibility()
 
-    all_class_level_AUMs = []
+    resampling_counts = []
     for idx in range(9):
         avg_hardness = list(np.mean([in_hoc_hardness_estimates[idx]], axis=0))
-
-        hardness_estimates_by_class = [[] for _ in range(num_classes)]
-        for sample_idx, label in enumerate(labels):
-            hardness_estimates_by_class[label].append(avg_hardness[sample_idx])
-        class_means = [np.mean(h_list) for h_list in hardness_estimates_by_class]
-        all_class_level_AUMs.append(class_means)
-
-    plot_individual_hardness(all_class_level_AUMs, num_classes)
+        resampling_counts.append(compute_sample_allocation_for_resampling(avg_hardness, labels, num_classes,
+                                                                          sum(num_training_samples), 2.5))
+    plot_individual_hardness(resampling_counts, num_classes)
+    oversampling_targets = [max(0, resampling_counts[0][cls_idx] - num_training_samples[cls_idx])
+                            for cls_idx in range(num_classes)]
+    with open('oversampling_targets.json', 'w') as f:
+        json.dump(oversampling_targets, f)
+    print(oversampling_targets)
 
 
 if __name__ == '__main__':
@@ -64,7 +66,3 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args.dataset_name)
-
-# TODO: Convert class-level AUMs to resampling ratios
-# TODO: Measure stability of resampling ratios
-

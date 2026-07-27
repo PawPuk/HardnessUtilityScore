@@ -33,15 +33,13 @@ def evaluate_model(
     return avg_loss, accuracy
 
 
-def compute_sample_allocation_after_resampling(
+def compute_sample_allocation_for_resampling(
         hardness_scores: List[float],
         labels: List[int],
         num_classes: int,
         num_training_samples: int,
-        hardness_estimator: str,
-        pruning_rate: int = 0,
         alpha: float = 1.0
-) -> Tuple[List[int], Dict[int, List[Tuple[int, float]]]]:
+) -> List[int]:
     """Compute number of samples per class after hardness-based resampling according to hardness_scores."""
     # Divide the instant-level hardness estimates into classes.
     hardness_by_class = {class_id: [] for class_id in range(num_classes)}
@@ -59,16 +57,12 @@ def compute_sample_allocation_after_resampling(
             class_hardness[class_id] += offset + 0.0001  # Adding epsilon to not divide by zero later on.
 
     # Compute the resampling ratios for each class.
-    if hardness_estimator in ['AUM', 'Confidence', 'iAUM', 'iConfidence']:
-        hardness_ratios = {class_id: 1 / float(val) for class_id, val in class_hardness.items()}
-    else:
-        hardness_ratios = {class_id: float(val) for class_id, val in class_hardness.items()}
+    hardness_ratios = {class_id: 1 / float(val) for class_id, val in class_hardness.items()}
     ratios = {class_id: class_hardness / sum(hardness_ratios.values())
               for class_id, class_hardness in hardness_ratios.items()}
 
     # Compute the amount of samples per class after resampling.
-    samples_per_class = [int(round((1 - pruning_rate / 100) * ratio * num_training_samples))
-                         for class_id, ratio in ratios.items()]
+    samples_per_class = [int(round(ratio * num_training_samples)) for ratio in ratios.values()]
 
     # Tailor the degree of the introduces data imbalance (only applicable if alpha is larger than 1).
     if alpha > 1.0:
@@ -80,4 +74,4 @@ def compute_sample_allocation_after_resampling(
             else:
                 samples_per_class[class_id] = average_sample_count - int(alpha * absolute_difference)
 
-    return samples_per_class, hardness_by_class
+    return samples_per_class
