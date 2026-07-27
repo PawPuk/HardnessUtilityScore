@@ -28,16 +28,15 @@ def main(dataset_name: str):
     # For each generative model, compute margins and save
     for generative_model in generative_models:
         # Load the corresponding synthetic data
-        synthetic_loader = load_synthetic_dataset(dataset_name, generative_model)
+        synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
 
         # Compute margins
         margins = {}
-        for dataset_idx in tqdm(model_paths.keys(), desc='Iterating through dataset indices'):
-            for model_idx in tqdm(model_paths[dataset_idx].keys(), desc='Iterating through model indices'):
-                model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
-                model.load_state_dict(torch.load(model_paths[dataset_idx][model_idx]))
-                model.eval()
-                margins.setdefault(dataset_idx, {})[model_idx] = compute_margins(model, synthetic_loader)
+        for model_idx in tqdm(model_paths[0].keys(), desc='Iterating through model indices'):
+            model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
+            model.load_state_dict(torch.load(model_paths[0][model_idx]))
+            model.eval()
+            margins[model_idx] = compute_margins(model, synthetic_loader)
 
         # Save margins
         save_dir = os.path.join(ROOT, "Results", dataset_name, 'post_hoc_hardness_estimates')

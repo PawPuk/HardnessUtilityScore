@@ -106,7 +106,7 @@ def load_real_dataset(
 def load_synthetic_dataset(
         dataset_name: str,
         generative_model: str
-) -> DataLoader[IndexedDataset]:
+) -> Tuple[DataLoader[IndexedDataset], IndexedDataset]:
     config = get_config(dataset_name)
     _, transform = get_transform(False, config)
     path = os.path.join(ROOT, 'synthetic_data', dataset_name, generative_model)
@@ -119,4 +119,4 @@ def load_synthetic_dataset(
     synthetic_set = IndexedDataset(synthetic_set, True)
     synthetic_loader = get_dataloader(synthetic_set, config['batch_size'] * 2)
 
-    return synthetic_loader
+    return synthetic_loader, synthetic_set

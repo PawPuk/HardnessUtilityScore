@@ -13,9 +13,10 @@ def main(dataset_name: str):
     training_loader, training_set, test_loader, _ = load_real_dataset(dataset_name, True, True)
     training_set_size = len(training_set)
     training_loaders = [training_loader]
+    save_suffix = f'{0.0:.2f}'
 
-    trainer = ModelTrainer(training_set_size, training_loaders, test_loader, dataset_name, estimate_hardness=True,
-                           for_experiment_1=True)
+    trainer = ModelTrainer(training_set_size, training_loaders, test_loader, dataset_name, save_suffix,
+                           estimate_hardness=True, for_experiment_1=True)
 
     trainer.train_ensemble()
 

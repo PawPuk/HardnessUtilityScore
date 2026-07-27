@@ -29,13 +29,12 @@ def compute_AUM(
 def compute_margins(
     model: ResNet18LowRes,
     data_loader: torch.utils.data.DataLoader,
-) -> Dict[int, List[float]]:
+) -> List[float]:
     """
     Compute margin for each sample: logit(true_label) - max_{c != true_label} logit(c).
     Returns a dictionary mapping each class index to a list of margins for that class.
     """
-    model.eval()
-    margins_by_class = {}
+    margins = []
 
     with torch.no_grad():
         for images, labels, _ in data_loader:
@@ -53,9 +52,6 @@ def compute_margins(
             max_other, _ = masked_logits.max(dim=1)
 
             batch_margins = correct_logits - max_other  # [batch_size]
+            margins.extend(batch_margins.cpu().tolist())
 
-            # Append each margin to its class list
-            for margin, label in zip(batch_margins.cpu().tolist(), labels.cpu().tolist()):
-                margins_by_class.setdefault(int(label), []).append(margin)
-
-    return margins_by_class
+    return margins

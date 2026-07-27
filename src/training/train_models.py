@@ -27,7 +27,7 @@ class ModelTrainer:
             training_loaders: List[DataLoader],
             test_loader: Union[DataLoader, None],
             dataset_name: str,
-            resampling_ratio: float = 0.0,
+            save_suffix: str,
             save_probe_models: bool = True,
             estimate_hardness: bool = False,
             for_experiment_1: bool = False
@@ -35,13 +35,13 @@ class ModelTrainer:
         """
         Initialize the ModelTrainer class with configuration specific to the dataset.
 
-        :param training_set_size: Specified the size of the training set. This is only useful for experiment1.py.
+        :param training_set_size: Specified the size of the training set. This is only useful when running
+        estimate_hardness_in_hoc.py.
         :param training_loaders: List of DataLoaders for the training datasets. For experiment1.py where only one
         dataset is used pass the DataLoader in a List.
         :param test_loader: DataLoader for the test dataset.
         :param dataset_name: The name of the dataset being used.
-        :param resampling_ratio: Ratio used for resampling. 0.0 indicates training on baseline datasets where no
-        resampling was applied.
+        :param save_suffix: Required to not overwrite the saved models.
         :param save_probe_models: Whether to save the probe models after a specified epoch (default: True). We use this
         later to verify if probe models can be used for post-hoc hardness estimation.
         :param estimate_hardness: Specify if the hardness should be saved and stored during training (default False).
@@ -50,7 +50,6 @@ class ModelTrainer:
         self.training_set_size = training_set_size
         self.training_loaders = training_loaders
         self.test_loader = test_loader
-        self.resampling_ratio = resampling_ratio
         self.dataset_name = dataset_name
         self.save_probe_models = save_probe_models
         self.estimate_hardness = estimate_hardness
@@ -66,7 +65,7 @@ class ModelTrainer:
             self.num_models_to_train_per_dataset = self.config['num_models_per_dataset']
             self.dataset_count = self.config['num_datasets']
 
-        self.save_dir = os.path.join(self.config['save_dir'], f"{resampling_ratio:.2f}", dataset_name)
+        self.save_dir = os.path.join(self.config['save_dir'], save_suffix, dataset_name)
         os.makedirs(self.save_dir, exist_ok=True)
 
     def train_model(

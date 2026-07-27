@@ -50,6 +50,13 @@ def load_in_hoc_hardness_estimates(dataset_name: str) -> List[List[float]]:
     return hardness_over_models
 
 
+def load_post_hoc_hardness_estimates(dataset_name: str, generative_model: str) -> Dict[int, List[float]]:
+    path = os.path.join(ROOT, 'Results', dataset_name, 'post_hoc_hardness_estimates', f'{generative_model}_margins.pkl')
+    hardness_estimates = load_results(path)
+    hardness_estimates = [hardness_estimates[i] for i in sorted(hardness_estimates.keys())]
+    return hardness_estimates
+
+
 def extract_paths_to_pretrained_models(dataset_name: str):
     config = get_config(dataset_name)
     base_path = os.path.join(ROOT, config['save_dir'], f"{0.00:.2f}", dataset_name)
