@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from src.config.config import DEVICE, ROOT, get_config
 from src.data.loading import load_synthetic_dataset
-from src.hardness.estimators import compute_margins
+from src.measures.hardness_estimators import compute_margins
 from src.models.neural_networks import ResNet18LowRes
 from src.utils.io import extract_paths_to_pretrained_models
 

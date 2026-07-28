@@ -11,7 +11,7 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from src.config.config import DEVICE, get_config
-from src.hardness.estimators import compute_AUM
+from src.measures.hardness_estimators import compute_AUM
 from src.models.neural_networks import ResNet18LowRes
 from src.utils.evaluation import evaluate_model
 from src.utils.io import save_in_hoc_hardness_estimates

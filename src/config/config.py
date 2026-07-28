@@ -36,10 +36,6 @@ num_datasets
 num_models_per_dataset
     Number of models trained for each dataset variant.
 
-num_models_for_hardness
-    Number of models used to estimate sample hardness during
-    baseline ensemble training.
-
 Runtime considerations
 ---------------------
 
@@ -94,9 +90,6 @@ dataset_configs = {
         # Experimental robustness parameters
         'num_datasets': 3,              # number of dataset variants
         'num_models_per_dataset': 3,    # number of models trained on each dataset variant
-
-        # Hardness estimation
-        'num_models_for_hardness': 10,  # ensemble size used to compute hardness in train_baseline_models.py
 
         # Other
         'save_epoch': 20,
