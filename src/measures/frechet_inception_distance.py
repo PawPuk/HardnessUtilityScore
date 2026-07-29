@@ -1,28 +1,64 @@
-"""
-Fréchet Inception Distance (FID) for evaluating generative models.
-"""
+from typing import Tuple, Union
 
-import torch
 import numpy as np
+from numpy.typing import NDArray
+from scipy.linalg import sqrtm
+import torch
+import torch.nn as nn
 from torchvision.models import inception_v3, Inception_V3_Weights, Inception3
 from torchvision.transforms import functional as TF
-from scipy.linalg import sqrtm
 from tqdm import tqdm
 
-from src.config.config import DEVICE
+from src.config.config import DEVICE, get_config
+from src.models.neural_networks import ResNet18LowRes
+from src.utils.io import extract_paths_to_pretrained_models
 
 
-def extract_features(mean: torch.Tensor, std: torch.Tensor,  model: Inception3,
-                     loader: torch.utils.data.DataLoader, desc: str) -> np.ndarray:
-    """Extract 2048-d features from all images in a DataLoader."""
+def load_feature_extractor(
+        dataset_name: str,
+        num_classes: int,
+        model_type: str = 'InceptionV3'
+) -> Union[Inception3, ResNet18LowRes]:
+    """Load a feature extractor (removes classification head)."""
+    if model_type == 'InceptionV3':
+        model = inception_v3(weights=Inception_V3_Weights.IMAGENET1K_V1)
+        model.fc = nn.Identity()   # output: 2048 dims
+    elif model_type == 'ResNet18LowRes':
+        model_paths = extract_paths_to_pretrained_models(dataset_name)
+        model = ResNet18LowRes(num_classes)
+        # First, load the full classifier to get the correct weights
+        state_dict = torch.load(model_paths[0][0])
+        model.load_state_dict(state_dict)
+        # Now remove the classifier to get features
+        model.fc = nn.Identity()   # output: 512 dims
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    model = model.to(DEVICE)
+    model.eval()
+    return model
+
+
+def extract_features(
+        loader: torch.utils.data.DataLoader,
+        model: Union[Inception3, ResNet18LowRes],
+        normalize: bool,
+        dataset_mean: Tuple[float, float, float],
+        dataset_std: Tuple[float, float, float],
+        desc: str = "Extracting features"
+
+) -> NDArray:
     features = []
     with torch.no_grad():
         for images, _, _ in tqdm(loader, desc=desc):
-            # Resize to 299x299 and normalize
-            images = TF.resize(images, (299, 299))
-            # Normalize
+            if isinstance(model, Inception3):
+                images = TF.resize(images, (299, 299))
+            if normalize:
+                images_raw = (images * dataset_std) + dataset_mean
+                mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
+                images = (images_raw - mean) / std
             images = images.to(DEVICE)
-            images = (images - mean) / std
 
             feat = model(images)
             features.append(feat.cpu().numpy())
@@ -30,40 +66,26 @@ def extract_features(mean: torch.Tensor, std: torch.Tensor,  model: Inception3,
 
 
 def compute_fid(
-    real_loader: torch.utils.data.DataLoader,
-    gen_loader: torch.utils.data.DataLoader
+        dataset_name: str,
+        real_loader: torch.utils.data.DataLoader,
+        gen_loader: torch.utils.data.DataLoader,
+        model_type: str = 'InceptionV3',
+        normalize: bool = False
 ) -> float:
-    """
-    Compute FID (data makes it class-conditioned but the code is general) between two datasets using Inception v3 features.
+    config = get_config(dataset_name)
+    num_classes = config['num_classes']
+    mean = config['mean']
+    std = config['std']
 
-    Args:
-        real_loader: DataLoader for real images (yields batches with first element as images).
-        gen_loader: DataLoader for generated images (same format).
-
-    Returns:
-        FID score (float). Lower is better.
-    """
-
-    # Load Inception v3
-    model = inception_v3(weights=Inception_V3_Weights.IMAGENET1K_V1)
-    # Remove the classification head to get 2048-dimensional features
-    model.fc = torch.nn.Identity()
-    model = model.to(DEVICE)
-    model.eval()
-
-    # Precompute normalization constants
-    mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
+    # Load model
+    model = load_feature_extractor(dataset_name, num_classes, model_type)
 
     # Extract features
-    features_real = extract_features(mean, std, model, real_loader, "Extracting real features")
-    features_gen = extract_features(mean, std, model, gen_loader, "Extracting generated features")
+    feat_real = extract_features(real_loader, model, normalize, mean, std, "Real (FID)")
+    feat_gen = extract_features(gen_loader, model, normalize, mean, std, "Generated (FID)")
 
-    # Compute mean and covariance
-    mu1 = np.mean(features_real, axis=0)
-    mu2 = np.mean(features_gen, axis=0)
-    sigma1 = np.cov(features_real, rowvar=False)
-    sigma2 = np.cov(features_gen, rowvar=False)
+    mu1, sigma1 = np.mean(feat_real, axis=0), np.cov(feat_real, rowvar=False)
+    mu2, sigma2 = np.mean(feat_gen, axis=0), np.cov(feat_gen, rowvar=False)
 
     # Compute FID
     diff = mu1 - mu2

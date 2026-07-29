@@ -17,11 +17,16 @@ def main(dataset_name: str):
     _, _, test_loader, _ = load_real_dataset(dataset_name)
 
     for generative_model in generative_models:
-        synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
-        # inception_score = compute_inception_score_using_inceptionV3(synthetic_loader)
-        # print(inception_score)
-        fid = compute_fid(test_loader, synthetic_loader)
-        print(f'FID for {generative_model} equals to {fid}.')
+        for model_type in ['ResNet18LowRes', 'InceptionV3']:
+            synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
+            # inception_score = compute_inception_score_using_inceptionV3(synthetic_loader)
+            # print(inception_score)
+            fid = compute_fid(dataset_name, test_loader, synthetic_loader, model_type)
+            print(f'FID for {generative_model} using {model_type} as feature extractor equals to {fid}.')
+            if model_type == 'InceptionV3':
+                fid = compute_fid(dataset_name, test_loader, synthetic_loader, model_type, True)
+                print(f"FID for {generative_model} using {model_type} as feature extractor and normalising with "
+                      f"ImageNet's mean and std equals to {fid}.")
 
 
 if __name__ == '__main__':

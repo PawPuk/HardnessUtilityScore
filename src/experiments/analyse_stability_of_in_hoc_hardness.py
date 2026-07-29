@@ -20,12 +20,12 @@ def plot_individual_hardness(all_class_level_AUMs, num_classes):
     for idx, class_means in enumerate(all_class_level_AUMs):
         plt.plot(range(num_classes), class_means, alpha=0.5, label=f'Estimate {idx+1}')
     plt.xlabel('Class index')
-    plt.ylabel('Class-level hardness (AUM)')
+    plt.ylabel('Class-level in-hoc hardness (AUM)')
     plt.title('Individual class-level hardness estimates from 9 runs')
     plt.grid(True, linestyle=':', alpha=0.5)
     plt.legend(ncol=3)
     plt.tight_layout()
-    plt.savefig('individual_AUM_stability.pdf', dpi=150)
+    plt.savefig('class_level_AUM.pdf', dpi=150)
 
 
 def main(dataset_name: str):
