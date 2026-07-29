@@ -45,11 +45,9 @@ def main(dataset_name: str):
 
     all_class_level_AUMs = []
     for idx in range(9):
-        avg_hardness = list(np.mean([in_hoc_hardness_estimates[idx]], axis=0))
-
         hardness_estimates_by_class = [[] for _ in range(num_classes)]
         for sample_idx, label in enumerate(labels):
-            hardness_estimates_by_class[label].append(avg_hardness[sample_idx])
+            hardness_estimates_by_class[label].append(in_hoc_hardness_estimates[idx][sample_idx])
         class_means = [np.mean(h_list) for h_list in hardness_estimates_by_class]
         all_class_level_AUMs.append(class_means)
 

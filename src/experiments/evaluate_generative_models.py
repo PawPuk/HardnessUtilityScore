@@ -6,18 +6,22 @@ import argparse
 import os
 
 from src.config.config import ROOT
-from src.data.loading import load_synthetic_dataset
+from src.data.loading import load_real_dataset, load_synthetic_dataset
 from src.measures.inception_score import compute_inception_score_using_inceptionV3
+from src.measures.frechet_inception_distance import compute_fid
 
 
 def main(dataset_name: str):
     synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
     generative_models = sorted([d for d in os.listdir(synth_root) if os.path.isdir(os.path.join(synth_root, d))])
+    _, _, test_loader, _ = load_real_dataset(dataset_name)
 
     for generative_model in generative_models:
         synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
-        inception_score = compute_inception_score_using_inceptionV3(synthetic_loader)
-        print(inception_score)
+        # inception_score = compute_inception_score_using_inceptionV3(synthetic_loader)
+        # print(inception_score)
+        fid = compute_fid(test_loader, synthetic_loader)
+        print(f'FID for {generative_model} equals to {fid}.')
 
 
 if __name__ == '__main__':
