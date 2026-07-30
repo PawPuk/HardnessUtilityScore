@@ -28,7 +28,7 @@ def main(dataset_name: str):
     # For each generative model, compute margins and save
     for generative_model in generative_models:
         # Load the corresponding synthetic data
-        synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
+        synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model, True)
 
         # Compute margins
         margins = {}

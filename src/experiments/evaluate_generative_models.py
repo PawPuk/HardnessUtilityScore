@@ -18,7 +18,7 @@ def main(dataset_name: str):
 
     for generative_model in generative_models:
         for model_type in ['ResNet18LowRes', 'InceptionV3']:
-            synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model)
+            synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model, False)
             # inception_score = compute_inception_score_using_inceptionV3(synthetic_loader)
             # print(inception_score)
             fid = compute_fid(dataset_name, test_loader, synthetic_loader, model_type)

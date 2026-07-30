@@ -22,8 +22,8 @@ def main(dataset_name: str, generative_model: str, oversampling_strategy: str, a
     num_training_samples = config['num_training_samples']
     dataset_count = config['num_datasets']
 
-    _, training_set, test_loader, test_set = load_real_dataset(dataset_name, True, True)
-    _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model)
+    _, training_set, test_loader, _ = load_real_dataset(dataset_name)
+    _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
 
     labels = [training_set[idx][1] for idx in range(len(training_set))]
     # Not doing np.mean() here to match the in_hoc_estimates obtained from compute_resampling_ratios.py
@@ -46,8 +46,6 @@ def main(dataset_name: str, generative_model: str, oversampling_strategy: str, a
         augmented_resampled_dataset = perform_data_augmentation(resampled_dataset, dataset_name)
         resampled_loaders.append(get_dataloader(augmented_resampled_dataset, batch_size=config['batch_size'],
                                                 shuffle=True))
-
-    test_loader = get_dataloader(test_set, batch_size=config['batch_size'])
 
     save_suffix = f'{oversampling_strategy}_{generative_model}_{alpha:.2f}'
     trainer = ModelTrainer(len(training_set), resampled_loaders, test_loader, dataset_name, save_suffix,

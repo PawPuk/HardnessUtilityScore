@@ -74,7 +74,7 @@ class DataResampling:
             data_by_class[label].append(image)
             in_hoc_hardness_by_class[label].append(self.in_hoc_hardness_estimates[idx])
         for image, label, idx in self.synthetic_set:
-            post_hoc_hardness_by_class[label.item()].append(self.post_hoc_hardness_estimates[idx])
+            post_hoc_hardness_by_class[label].append(self.post_hoc_hardness_estimates[idx])
 
         resampled_data, resampled_labels = [], []
 

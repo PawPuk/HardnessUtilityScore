@@ -65,13 +65,12 @@ def compute_sample_allocation_for_resampling(
     samples_per_class = [int(round(ratio * num_training_samples)) for ratio in ratios.values()]
 
     # Tailor the degree of the introduces data imbalance (only applicable if alpha is larger than 1).
-    if alpha > 1.0:
-        average_sample_count = int(np.mean(samples_per_class))
-        for class_id in range(num_classes):
-            absolute_difference = abs(samples_per_class[class_id] - average_sample_count)
-            if samples_per_class[class_id] > average_sample_count:
-                samples_per_class[class_id] = average_sample_count + int(alpha * absolute_difference)
-            else:
-                samples_per_class[class_id] = average_sample_count - int(alpha * absolute_difference)
+    average_sample_count = int(np.mean(samples_per_class))
+    for class_id in range(num_classes):
+        absolute_difference = abs(samples_per_class[class_id] - average_sample_count)
+        if samples_per_class[class_id] > average_sample_count:
+            samples_per_class[class_id] = average_sample_count + int(alpha * absolute_difference)
+        else:
+            samples_per_class[class_id] = average_sample_count - int(alpha * absolute_difference)
 
     return samples_per_class

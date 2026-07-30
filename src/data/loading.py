@@ -105,14 +105,18 @@ def load_real_dataset(
 
 def load_synthetic_dataset(
         dataset_name: str,
-        generative_model: str
+        generative_model: str,
+        normalize: bool
 ) -> Tuple[DataLoader[IndexedDataset], IndexedDataset]:
     config = get_config(dataset_name)
-    _, transform = get_transform(False, config)
+    unnormalized_transform, normalized_transform = get_transform(False, config)
     path = os.path.join(ROOT, 'synthetic_data', dataset_name, generative_model)
 
     if dataset_name == 'CIFAR-100':
-        synthetic_set = SyntheticImageDataset(path, transform=transform)
+        if normalize:
+            synthetic_set = SyntheticImageDataset(path, transform=normalized_transform)
+        else:
+            synthetic_set = SyntheticImageDataset(path, transform=unnormalized_transform)
     else:
         raise Exception
 

@@ -42,7 +42,7 @@ def load_feature_extractor(
 def extract_features(
         loader: torch.utils.data.DataLoader,
         model: Union[Inception3, ResNet18LowRes],
-        normalize: bool,
+        weird_normalization: bool,
         dataset_mean: Tuple[float, float, float],
         dataset_std: Tuple[float, float, float],
         desc: str = "Extracting features"
@@ -53,11 +53,13 @@ def extract_features(
         for images, _, _ in tqdm(loader, desc=desc):
             if isinstance(model, Inception3):
                 images = TF.resize(images, (299, 299))
-            if normalize:
-                images_raw = (images * dataset_std) + dataset_mean
+            if weird_normalization:
                 mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
                 std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
-                images = (images_raw - mean) / std
+            else:
+                mean = torch.tensor(dataset_mean, device=DEVICE).view(1, 3, 1, 1)
+                std = torch.tensor(dataset_std, device=DEVICE).view(1, 3, 1, 1)
+            images = (images - mean) / std
             images = images.to(DEVICE)
 
             feat = model(images)
@@ -70,7 +72,7 @@ def compute_fid(
         real_loader: torch.utils.data.DataLoader,
         gen_loader: torch.utils.data.DataLoader,
         model_type: str = 'InceptionV3',
-        normalize: bool = False
+        weird_normalization: bool = False
 ) -> float:
     config = get_config(dataset_name)
     num_classes = config['num_classes']
@@ -81,8 +83,8 @@ def compute_fid(
     model = load_feature_extractor(dataset_name, num_classes, model_type)
 
     # Extract features
-    feat_real = extract_features(real_loader, model, normalize, mean, std, "Real (FID)")
-    feat_gen = extract_features(gen_loader, model, normalize, mean, std, "Generated (FID)")
+    feat_real = extract_features(real_loader, model, weird_normalization, mean, std, "Real (FID)")
+    feat_gen = extract_features(gen_loader, model, weird_normalization, mean, std, "Generated (FID)")
 
     mu1, sigma1 = np.mean(feat_real, axis=0), np.cov(feat_real, rowvar=False)
     mu2, sigma2 = np.mean(feat_gen, axis=0), np.cov(feat_gen, rowvar=False)
