@@ -17,7 +17,7 @@ from src.utils.io import extract_paths_to_pretrained_models
 def load_feature_extractor(
         dataset_name: str,
         num_classes: int,
-        model_type: str = 'InceptionV3'
+        model_type: str
 ) -> Union[Inception3, ResNet18LowRes]:
     """Load a feature extractor (removes classification head)."""
     if model_type == 'InceptionV3':
