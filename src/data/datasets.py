@@ -6,22 +6,10 @@ from PIL import Image
 from typing import Tuple
 
 import torch
-from torch.utils.data import TensorDataset
 
 
 class IndexedDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, is_test=False, transform=None):
-        # To improve speed, we transform the dataset into a TensorDataset (only viable if no augmentation is applied)
-        """if not isinstance(dataset, TensorDataset) and is_test:
-            data_list, label_list = [], []
-            for i in range(len(dataset)):
-                data, label = dataset[i]
-                data_list.append(data)
-                label_list.append(torch.tensor(label))  # Necessary because some datasets return labels as integers
-            data_tensor = torch.stack(data_list)
-            label_tensor = torch.tensor(label_list)
-            dataset = TensorDataset(data_tensor, label_tensor)"""
-
+    def __init__(self, dataset, transform=None):
         self.dataset = dataset
         self.transform = transform
 
