@@ -58,7 +58,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
     parser.add_argument('--dataset_name', type=str, required=True,
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
-    parser.add_argument('--generative_model', type=str, required=True, choices=['edm', 'vae'],
+    parser.add_argument('--generative_model', type=str, required=True, choices=['edm', 'vae', 'stylegan', 'nvidiaedm'],
                         help='Name of the generative model architecture used to produce the synthetic data.')
     parser.add_argument('--oversampling_strategy', type=str, required=True, choices=['random', 'hard'],
                         help='Pick `random` to use random synthetic samples. Pick `hard` to use only the hardest ones '

@@ -1,12 +1,17 @@
-from typing import List, Tuple
+from collections import defaultdict
+import os
+from typing import Dict, List, Tuple
 
+import dill
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.config.config import DEVICE
 from src.models.neural_networks import ResNet18LowRes
+from src.utils.structures import defaultdict_to_dict
 
 
 def evaluate_model(
@@ -74,3 +79,77 @@ def compute_sample_allocation_for_resampling(
             samples_per_class[class_id] = average_sample_count - int(alpha * absolute_difference)
 
     return samples_per_class
+
+
+def evaluate_ensembles(
+        ensembles: Dict[int, List[str]],
+        test_loader: DataLoader,
+        class_index: int,
+        num_classes: int,
+        generative_model: str,
+        strategy: str,
+        results: Dict[str, Dict[str, Dict[str, Dict[int, Dict[int, Dict[int, float]]]]]]
+):
+    """Used to compute the scores necessary to produce visualizations - Tp, Tn, Fp, Fn, Precision, and Recall."""
+    for dataset_idx in range(len(ensembles)):
+        for model_idx, model_path in enumerate(ensembles[dataset_idx]):
+            model_state = torch.load(model_path)
+            true_positives, true_negatives, false_positives, false_negatives = 0, 0, 0, 0
+            model = ResNet18LowRes(num_classes)
+            model.load_state_dict(model_state)
+            model = model.to(DEVICE)
+            model.eval()
+
+            with torch.no_grad():
+                for images, labels, _ in test_loader:
+                    images, labels = images.to(DEVICE), labels.to(DEVICE)
+                    outputs = model(images)
+                    _, predicted = outputs.max(1)
+
+                    for pred, label in zip(predicted, labels):
+                        if label == class_index:
+                            if pred.item() == class_index:
+                                true_positives += 1
+                            else:
+                                false_negatives += 1
+                        else:
+                            if pred.item() == class_index:
+                                false_positives += 1
+                            else:
+                                true_negatives += 1
+
+            precision = true_positives / (true_positives + false_positives)
+            recall = true_positives / (true_positives + false_negatives)
+
+            for (metric_name, metric_results) in [('Tp', true_positives), ('Tn', true_negatives), ('Recall', recall),
+                                                  ('Fp', false_positives), ('Fn', false_negatives),
+                                                  ('Precision', precision)]:
+                results[metric_name][generative_model][strategy][class_index][dataset_idx][model_idx] = metric_results
+
+
+def obtain_results(
+        save_dir: str,
+        num_classes: int,
+        test_loader: DataLoader,
+        file_name: str,
+        models: Dict[str, Dict[str, Dict[int, List[str]]]],
+) -> Dict[str, Dict[str, Dict[str, Dict[int, Dict[int, Dict[int, float]]]]]]:
+    """Load the results if they have been computed before, or use evaluate_ensembles to compute them."""
+    results = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(
+        lambda: defaultdict(float))))))
+    if os.path.exists(os.path.join(save_dir, file_name)):
+        print('Loading pre-computed ensemble results.')
+        with open(os.path.join(save_dir, file_name), 'rb') as f:
+            results = dill.load(f)
+    else:
+        for class_index in tqdm(range(num_classes), desc='Iterating through classes'):
+            for generative_model, ensembles_over_strategies in models.items():
+                for strategy, ensembles in ensembles_over_strategies.items():
+                    evaluate_ensembles(ensembles, test_loader, class_index, num_classes, generative_model, strategy,
+                                       results)
+        os.makedirs(save_dir, exist_ok=True)
+
+        with open(os.path.join(save_dir, file_name), "wb") as file:
+            dill.dump(results, file)
+    print('The loaded results have keys:', results.keys())
+    return defaultdict_to_dict(results)

@@ -2,7 +2,7 @@
 
 set -e
 
-generative_models=("edm" "vae")
+generative_models=("edm" "vae" "stylegan")
 oversampling_strategies=("hard" "random")
 
 for generative_model in "${generative_models[@]}"
