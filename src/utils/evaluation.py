@@ -1,6 +1,6 @@
 from collections import defaultdict
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import dill
 import numpy as np
@@ -153,3 +153,58 @@ def obtain_results(
             dill.dump(results, file)
     print('The loaded results have keys:', results.keys())
     return defaultdict_to_dict(results)
+
+
+def compute_fairness_metrics(
+        results: Dict[str, Dict[str, Dict[str, Dict[int, Dict[int, Dict[int, float]]]]]],
+        samples_per_class: List[int],
+        num_classes: int
+) -> Dict[str, Dict[str, Dict[str, Dict[str, Tuple[float, float, List[float]]]]]]:
+    """This method computes the fairness metrics to better determine whether applying hardness-based resampling brings
+    meaningful improvement to fairness."""
+    fairness_results = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    for metric_name in ['Recall', 'Precision']:
+        for generative_model in results[metric_name]:
+            for strategy in results[metric_name][generative_model].keys():
+                fairness_metrics_grid = {'max_min_gap': [], 'std_dev': [], 'quant_diff': [], 'mad': [], 'hard_easy': [],
+                                         'avg_value': []}
+
+                num_datasets = len(results[metric_name][generative_model][strategy][0])
+                for dataset_idx in range(num_datasets):
+                    num_models = len(results[metric_name][generative_model][strategy][0][dataset_idx])
+                    for model_idx in range(num_models):
+                        metric_values = [
+                            results[metric_name][generative_model][strategy][class_id][dataset_idx][model_idx]
+                            for class_id in range(num_classes)
+                        ]
+
+                        max_min_gap = max(metric_values) - min(metric_values)
+                        std_dev = np.std(metric_values)
+
+                        median_val = np.median(metric_values)
+                        mad = np.median(np.abs(metric_values - median_val))
+
+                        k = 2 if num_classes == 10 else 10
+                        upper = np.mean(np.sort(metric_values)[-k:])
+                        lower = np.mean(np.sort(metric_values)[:k])
+                        quant_diff = upper - lower
+
+                        hard_class_recalls = [metric_values[cls] for cls in range(len(samples_per_class))
+                                              if samples_per_class[cls] > np.mean(samples_per_class)]
+                        easy_class_recalls = [metric_values[cls] for cls in range(len(samples_per_class))
+                                              if samples_per_class[cls] <= np.mean(samples_per_class)]
+                        hard_easy = float(np.mean(easy_class_recalls)) - float(np.mean(hard_class_recalls))
+
+                        avg_value = np.mean(metric_values)
+
+                        for (fairness_metric, metric_results) in [('max_min_gap', max_min_gap), ('mad', mad),
+                                                                  ('std_dev', std_dev), ('quant_diff', quant_diff),
+                                                                  ('hard_easy', hard_easy),
+                                                                  ('avg_value', avg_value)]:
+                            fairness_metrics_grid[fairness_metric].append(metric_results)
+
+                for fairness_metric, values in fairness_metrics_grid.items():
+                    fairness_results[metric_name][generative_model][strategy][fairness_metric] = \
+                        (float(np.mean(values)), float(np.std(values)), values)
+
+    return defaultdict_to_dict(fairness_results)

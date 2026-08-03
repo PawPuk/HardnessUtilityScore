@@ -19,7 +19,9 @@ import os
 from src.config.config import get_config, ROOT
 from src.data.loading import load_real_dataset
 from src.models.loading import extract_model_paths
-from src.utils.evaluation import obtain_results
+from src.utils.evaluation import compute_fairness_metrics, obtain_results
+from src.utils.io import load_sample_allocations
+from src.visualization.figures import plot_fairness
 
 
 class ResamplingVisualizer:
@@ -35,22 +37,34 @@ class ResamplingVisualizer:
 
         config = get_config(args.dataset_name)
         self.num_classes = config['num_classes']
+        self.num_training_samples = config['num_training_samples']
+        self.num_test_samples = config['num_test_samples']
         self.num_epochs = config['num_epochs']
         self.num_models_per_dataset = config['num_models_per_dataset']
         self.num_datasets = config['num_datasets']
+
+        self.figure_save_dir = os.path.join(ROOT, 'Figures/', dataset_name)
+        self.hardness_save_dir = os.path.join(ROOT, f"Results/")
+
+        for save_dir in self.figure_save_dir, self.hardness_save_dir:
+            os.makedirs(save_dir, exist_ok=True)
 
     def main(self):
         """Main method for producing the visualizations."""
         results_dir = os.path.join(ROOT, "Results", self.dataset_name)
         models = extract_model_paths(self.dataset_name, self.num_epochs, self.num_datasets, self.num_models_per_dataset)
         _, _, test_loader, _ = load_real_dataset(self.dataset_name)
+        samples_per_class = load_sample_allocations(self.hardness_save_dir, self.dataset_name)
 
-        obtain_results(results_dir, self.num_classes, test_loader, "HBR_results.pkl", models)
+        results = obtain_results(results_dir, self.num_classes, test_loader, "HBR_results.pkl", models)
+        fairness_results = compute_fairness_metrics(results, samples_per_class[2.00], self.num_classes)
+
+        plot_fairness(fairness_results, self.figure_save_dir)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load models for specified pruning strategy and dataset")
-    parser.add_argument("--dataset_name", type=str, choices=['CIFAR-100'], required=True,
+    parser.add_argument("--dataset_name", type=str, required=True,
                         help="Name of the dataset (e.g., 'CIFAR10')")
 
     args = parser.parse_args()
