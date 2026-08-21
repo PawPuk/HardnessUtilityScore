@@ -42,7 +42,7 @@ def compute_margins_and_confidences(
     Returns a list of margins (one per sample) in the same order as the data_loader.
     """
     margins = []
-    all_scores = []
+    all_confidences = []
 
     with torch.no_grad():
         for images, labels, _ in data_loader:
@@ -62,6 +62,6 @@ def compute_margins_and_confidences(
 
             batch_margins = correct_scores - max_other  # [batch_size]
             margins.extend(batch_margins.cpu().tolist())
-            all_scores.extend(correct_scores)
+            all_confidences.extend(correct_scores.cpu().tolist())
 
-    return margins, all_scores
+    return margins, all_confidences
