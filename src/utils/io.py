@@ -57,7 +57,7 @@ def load_post_hoc_hardness_estimates(dataset_name: str, generative_model: str) -
     return hardness_estimates
 
 
-def extract_paths_to_pretrained_models(dataset_name: str):
+def extract_paths_to_pretrained_models(dataset_name: str) -> Dict[int, Dict[int, str]]:
     config = get_config(dataset_name)
     base_path = os.path.join(ROOT, config['save_dir'], f"{0.00:.2f}", dataset_name)
     pattern = os.path.join(base_path, f'dataset_*_model_*_epoch_{config["num_epochs"]}.pth')

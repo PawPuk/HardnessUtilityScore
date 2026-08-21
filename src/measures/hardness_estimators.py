@@ -26,15 +26,23 @@ def compute_AUM(
         in_hoc_hardness_estimates[dataset_model_id][i][epoch] = correct_logit - max_other_logit
 
 
-def compute_margins(
+def compute_margins_and_confidences(
     model: ResNet18LowRes,
     data_loader: torch.utils.data.DataLoader,
+    use_logits: bool
 ) -> List[float]:
     """
-    Compute margin for each sample: logit(true_label) - max_{c != true_label} logit(c).
-    Returns a dictionary mapping each class index to a list of margins for that class.
+    Compute the margin for each sample.
+
+    If `use_logits` is True:
+        margin = logit(true) - max_{c != true} logit(c)
+    Otherwise:
+        margin = softmax(true) - max_{c != true} softmax(c)
+
+    Returns a list of margins (one per sample) in the same order as the data_loader.
     """
     margins = []
+    all_scores = []
 
     with torch.no_grad():
         for images, labels, _ in data_loader:
@@ -42,16 +50,18 @@ def compute_margins(
             labels = labels.to(DEVICE)
 
             logits = model(images)  # [batch_size, num_classes]
+            scores = logits if use_logits else torch.softmax(logits, dim=1)
 
-            # Logits for the true class
-            correct_logits = logits.gather(1, labels.unsqueeze(1)).squeeze(1)
+            # Scores for the true class
+            correct_scores = scores.gather(1, labels.unsqueeze(1)).squeeze(1)
 
             # Mask out the true class to get max among all others
-            masked_logits = logits.clone()
-            masked_logits.scatter_(1, labels.unsqueeze(1), -float('inf'))
-            max_other, _ = masked_logits.max(dim=1)
+            masked_scores = scores.clone()
+            masked_scores.scatter_(1, labels.unsqueeze(1), -float('inf'))
+            max_other, _ = masked_scores.max(dim=1)
 
-            batch_margins = correct_logits - max_other  # [batch_size]
+            batch_margins = correct_scores - max_other  # [batch_size]
             margins.extend(batch_margins.cpu().tolist())
+            all_scores.extend(correct_scores)
 
-    return margins
+    return margins, all_scores
