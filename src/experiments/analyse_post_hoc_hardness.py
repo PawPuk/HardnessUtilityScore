@@ -23,7 +23,7 @@ def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
     return avg_over_models
 
 
-def plot_hardness_histograms_for_type(
+def plot_hardness_for_type(
         real_hardness: np.ndarray,
         model_files: List[str],
         hardness_type: str
@@ -39,33 +39,79 @@ def plot_hardness_histograms_for_type(
     cols = min(4, n_files)
     rows = (n_files + cols - 1) // cols
 
-    fig, axes = plt.subplots(rows, cols, figsize=(16, 10))
-    axes = axes.flatten() if n_files > 1 else [axes]
+    fig_hist, axes_hist = plt.subplots(rows, cols, figsize=(16, 10))
+    fig_sorted, axes_sorted = plt.subplots(rows, cols, figsize=(16, 10))
+    axes_hist = axes_hist.flatten()
+    axes_sorted = axes_sorted.flatten()
+
+    sorted_real = np.sort(real_hardness)
 
     # For each model file, compute averaged hardness and plot histogram
-    for ax, fpath in zip(axes, model_files):
+    for ax_hist, ax_sorted, fpath in zip(axes_hist, axes_sorted, model_files):
         hardness = compute_avg_hardness_per_model(fpath)
 
-        ax.hist(hardness, bins=50, alpha=0.7, edgecolor='black', density=True, label='Model')
-        ax.hist(real_hardness, bins=50, histtype='step', color='black', linewidth=2, density=True, label='Real')
+        # ---- Histogram (density) ----
+        ax_hist.hist(hardness, bins=50, alpha=0.7, edgecolor='black', density=True, label='Model')
+        ax_hist.hist(real_hardness, bins=50, histtype='step', color='black', linewidth=2, density=True, label='Real')
+        ax_hist.set_xlabel('Hardness')
+        ax_hist.set_ylabel('Density')
 
-        ax.set_title(os.path.basename(fpath).replace('.pkl', ''))
-        ax.set_xlabel('Hardness')
-        ax.set_ylabel('Density')
+        # ---- Sorted values ----
+        sorted_model = np.sort(hardness)
+        ax_sorted.plot(sorted_model, label='Model', alpha=0.7)
+        ax_sorted.plot(sorted_real, label='Real', color='black', linestyle='--', linewidth=2)
+        ax_sorted.set_xlabel('Sample index (sorted)')
+        ax_sorted.set_ylabel('Hardness value')
+
+        # ---- KL divergence (Real vs Synthetic) ----
+        # Define common bins covering both distributions
+        vmin = min(np.min(hardness), np.min(real_hardness))
+        vmax = max(np.max(hardness), np.max(real_hardness))
+        bins = np.linspace(vmin, vmax, 50)   # 50 bins as in the plots
+
+        # Histograms as counts (not density)
+        hist_model, _ = np.histogram(hardness, bins=bins)
+        hist_real, _ = np.histogram(real_hardness, bins=bins)
+
+        # Convert counts to probabilities
+        prob_model = hist_model / np.sum(hist_model)
+        prob_real = hist_real / np.sum(hist_real)
+
+        # Laplace smoothing (add small epsilon) to avoid log(0)
+        eps = 1e-10
+        prob_model = np.clip(prob_model, eps, 1.0)
+        prob_real = np.clip(prob_real, eps, 1.0)
+
+        # KL(real || model)  --  how different is model from real?
+        kl_div = np.sum(prob_real * np.log(prob_real / prob_model))
+
+        # Display on the histogram subplot (top‑left corner)
+        ax_hist.text(0.05, 0.95, f'KL = {kl_div:.3f}', transform=ax_hist.transAxes, verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+        for ax in [ax_hist, ax_sorted]:
+            ax.set_title(os.path.basename(fpath).replace('.pkl', ''))
 
     # Hide any unused subplots
-    for ax in axes[n_files:]:
+    for ax in axes_hist[n_files:]:
+        ax.axis('off')
+    for ax in axes_sorted[n_files:]:
         ax.axis('off')
 
-    plt.suptitle(f"Hardness type: {hardness_type}", fontsize=14)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make room for suptitle
-    plt.savefig(f"hardness_histograms_{hardness_type}.png", dpi=150, bbox_inches='tight')
+    fig_hist.suptitle(f"Hardness type: {hardness_type} – Histograms", fontsize=14)
+    fig_hist.tight_layout(rect=[0, 0, 1, 0.95])
+    fig_hist.savefig(f"hardness_histograms_{hardness_type}.png", dpi=150, bbox_inches='tight')
+
+    fig_sorted.suptitle(f"Hardness type: {hardness_type} – Sorted values", fontsize=14)
+    fig_sorted.tight_layout(rect=[0, 0, 1, 0.95])
+    fig_sorted.savefig(f"hardness_sorted_{hardness_type}.png", dpi=150, bbox_inches='tight')
+
     plt.show()
 
 
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
-    hardness_types = ["logit_margins"]
+    hardness_types = ["logit_margins", "softmax_margins", "logit_confidences", "softmax_confidences"]
 
     all_files = glob(os.path.join(base_dir, "*.pkl"))
     if not all_files:
@@ -83,7 +129,7 @@ def main(dataset_name: str):
                     model_files.append(f)
         real_hardness = compute_avg_hardness_per_model(real_file)
 
-        plot_hardness_histograms_for_type(real_hardness, sorted(model_files), hardness_type)
+        plot_hardness_for_type(real_hardness, sorted(model_files), hardness_type)
 
 
 if __name__ == "__main__":
