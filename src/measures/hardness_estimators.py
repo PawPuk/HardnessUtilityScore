@@ -64,4 +64,4 @@ def compute_margins_and_confidences(
             margins.extend(batch_margins.cpu().tolist())
             all_confidences.extend(correct_scores.cpu().tolist())
 
-    return margins, all_confidences
+    return all_confidences, margins

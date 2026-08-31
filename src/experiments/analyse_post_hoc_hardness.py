@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.config.config import ROOT
+from src.data.datasets import IndexedDataset
+from src.data.loading import load_real_dataset, load_synthetic_dataset
 
 
 def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
@@ -109,6 +111,96 @@ def plot_hardness_for_type(
     plt.show()
 
 
+def load_labels(dataset: IndexedDataset) -> np.ndarray:
+    """
+    Load the test set labels for the given dataset.Returns a 1D numpy array of integer labels (0-99) in the same order as the hardness arrays.
+    """
+    labels = []
+    for i in range(len(dataset)):
+        labels.append(dataset[i][1])
+    return np.array(labels)
+
+
+def compute_class_means(hardness: np.ndarray, labels: np.ndarray, num_classes: int = 100) -> np.ndarray:
+    """
+    Given hardness per sample and corresponding class labels, compute mean hardness per class.
+    Classes with no samples get NaN.
+    """
+    class_means = np.full(num_classes, np.nan)
+
+    for c in range(num_classes):
+        mask = (labels == c)
+        if np.any(mask):
+            class_means[c] = np.mean(hardness[mask])
+    return class_means
+
+
+def plot_class_hardness(
+        dataset_name: str,
+        real_hardness: np.ndarray,
+        model_files: List[str],
+        hardness_type: str,
+        num_classes: int = 100
+) -> None:
+    """
+    For a given hardness type, compute per-class mean hardness for real and all models,
+    then create two figures:
+      1) Bar charts: one subplot per model, showing real vs model class means.
+      2) Line plot: all models + real over classes sorted by real hardness.
+    Classes are sorted by real hardness (ascending). Missing classes (NaNs) are left as gaps.
+    """
+    _, _, _, test_set = load_real_dataset(dataset_name)
+    real_labels = load_labels(test_set)
+    real_class_means = compute_class_means(real_hardness, real_labels, num_classes)
+
+    model_class_means = []
+    for fpath in model_files:
+        h = compute_avg_hardness_per_model(fpath)
+        basename = os.path.basename(fpath)
+        generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
+        _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
+        synthetic_labels = load_labels(synthetic_set)
+        means = compute_class_means(h, synthetic_labels, num_classes)
+        model_class_means.append(means)
+
+    valid_real = ~np.isnan(real_class_means)
+    sorted_indices = np.argsort(real_class_means[valid_real])
+    valid_classes = np.arange(num_classes)[valid_real]
+    sorted_classes = valid_classes[sorted_indices]  # class IDs in ascending real hardness
+    sorted_real_means = real_class_means[sorted_classes]
+
+    n_files = len(model_files)
+    cols = min(4, n_files)
+    rows = (n_files + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(18, 12))
+    axes = axes.flatten()
+
+    x_positions = np.arange(len(sorted_classes))   # x coordinates for bars
+
+    for idx, (ax, fpath) in enumerate(zip(axes, model_files)):
+        model_means = model_class_means[idx]
+        sorted_model_means = model_means[sorted_classes]
+
+        ax.bar(x_positions, sorted_model_means, width=0.6, color='C0', alpha=0.7, label='Model')
+        ax.plot(x_positions, sorted_real_means, color='black', linestyle='-', linewidth=2, label='Real')
+
+        ax.set_xticks([])
+        ax.set_xlabel('Class ID (sorted by real hardness)')
+        ax.set_ylabel('Mean Hardness')
+        ax.set_title(os.path.basename(fpath).replace('.pkl', ''))
+        ax.legend()
+        ax.grid(True, axis='y', linestyle=':', alpha=0.4)
+
+    for ax in axes[n_files:]:
+        ax.axis('off')
+
+    fig.suptitle(f"Class-wise Hardness – {hardness_type} (real line + model bars)", fontsize=16)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(f"class_hardness_bars_{hardness_type}.png", dpi=150, bbox_inches='tight')
+    plt.show()
+
+
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
     hardness_types = ["logit_margins", "softmax_margins", "logit_confidences", "softmax_confidences"]
@@ -128,12 +220,14 @@ def main(dataset_name: str):
                 else:
                     model_files.append(f)
         real_hardness = compute_avg_hardness_per_model(real_file)
+        sorted_models = sorted(model_files)
 
-        plot_hardness_for_type(real_hardness, sorted(model_files), hardness_type)
+        plot_hardness_for_type(real_hardness, sorted_models, hardness_type)
+        plot_class_hardness(dataset_name, real_hardness, sorted_models, hardness_type)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
+    parser = argparse.ArgumentParser(description='Compare hardness distributions between real and synthetic data.')
     parser.add_argument('--dataset_name', type=str, required=True,
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
 
