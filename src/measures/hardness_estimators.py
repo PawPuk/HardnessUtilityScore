@@ -29,20 +29,13 @@ def compute_AUM(
 def compute_margins_and_confidences(
     model: ResNet18LowRes,
     data_loader: torch.utils.data.DataLoader,
-    use_logits: bool
 ) -> List[float]:
     """
     Compute the margin for each sample.
 
-    If `use_logits` is True:
-        margin = logit(true) - max_{c != true} logit(c)
-    Otherwise:
-        margin = softmax(true) - max_{c != true} softmax(c)
-
     Returns a list of margins (one per sample) in the same order as the data_loader.
     """
-    margins = []
-    all_confidences = []
+    logit_margins, softmax_margins, all_logit_confidences, all_softmax_confidences = [], [], [], []
 
     with torch.no_grad():
         for images, labels, _ in data_loader:
@@ -50,18 +43,26 @@ def compute_margins_and_confidences(
             labels = labels.to(DEVICE)
 
             logits = model(images)  # [batch_size, num_classes]
-            scores = logits if use_logits else torch.softmax(logits, dim=1)
+            logit_scores = logits
+            softmax_scores = torch.softmax(logits, dim=1)
 
             # Scores for the true class
-            correct_scores = scores.gather(1, labels.unsqueeze(1)).squeeze(1)
+            correct_logit_scores = logit_scores.gather(1, labels.unsqueeze(1)).squeeze(1)
+            correct_softmax_scores = logit_scores.gather(1, labels.unsqueeze(1)).squeeze(1)
 
             # Mask out the true class to get max among all others
-            masked_scores = scores.clone()
-            masked_scores.scatter_(1, labels.unsqueeze(1), -float('inf'))
-            max_other, _ = masked_scores.max(dim=1)
+            masked_logit_scores = logit_scores.clone()
+            masked_softmax_scores = softmax_scores.clone()
+            masked_logit_scores.scatter_(1, labels.unsqueeze(1), -float('inf'))
+            masked_softmax_scores.scatter_(1, labels.unsqueeze(1), -float('inf'))
+            max_other_logit, _ = masked_logit_scores.max(dim=1)
+            max_other_softmax, _ = masked_softmax_scores.max(dim=1)
 
-            batch_margins = correct_scores - max_other  # [batch_size]
-            margins.extend(batch_margins.cpu().tolist())
-            all_confidences.extend(correct_scores.cpu().tolist())
+            batch_logit_margins = correct_logit_scores - max_other_logit  # [batch_size]
+            batch_softmax_margins = correct_softmax_scores - max_other_softmax
+            logit_margins.extend(batch_logit_margins.cpu().tolist())
+            softmax_margins.extend(batch_softmax_margins.cpu().tolist())
+            all_logit_confidences.extend(correct_logit_scores.cpu().tolist())
+            all_softmax_confidences.extend(correct_softmax_scores.cpu().tolist())
 
-    return all_confidences, margins
+    return all_logit_confidences, all_softmax_confidences, logit_margins, softmax_margins

@@ -20,22 +20,21 @@ from src.utils.io import extract_paths_to_pretrained_models
 def estimate_and_save_post_hoc_hardness(
         loader: torch.utils.data.DataLoader,
         model_paths: Dict[int, Dict[int, str]],
-        num_classes: int,
-        use_logits: bool
-) -> Tuple[Dict[int, List[float]], Dict[int, List[float]]]:
-    confidences, margins = {}, {}
-    for model_idx in tqdm(model_paths[0].keys(), desc='Iterating through model indices'):
+        num_classes: int
+) -> Tuple[Dict[int, List[float]], Dict[int, List[float]], Dict[int, List[float]], Dict[int, List[float]]]:
+    logit_confidences, softmax_confidences, logit_margins, softmax_margins = {}, {}, {}, {}
+    for i in tqdm(model_paths[0].keys(), desc='Iterating through model indices'):
         model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
-        model.load_state_dict(torch.load(model_paths[0][model_idx]))
+        model.load_state_dict(torch.load(model_paths[0][i]))
         model.eval()
-        confidences[model_idx], margins[model_idx] = compute_margins_and_confidences(model, loader, use_logits)
-    return confidences, margins
+        logit_confidences[i], softmax_confidences[i], logit_margins[i], softmax_margins[i] = \
+            compute_margins_and_confidences(model, loader)
+    return logit_confidences, softmax_confidences, logit_margins, softmax_margins
 
 
 def main(
         dataset_name: str,
-        overwrite: bool,
-        use_logits: bool
+        overwrite: bool
 ):
     config = get_config(dataset_name)
     num_classes = config['num_classes']
@@ -46,33 +45,43 @@ def main(
     model_paths = extract_paths_to_pretrained_models(dataset_name)
     save_dir = os.path.join(ROOT, "Results", dataset_name, 'post_hoc_hardness_estimates')
     os.makedirs(save_dir, exist_ok=True)
-    suffix = 'logit' if use_logits else 'softmax'
 
+    # Estimate post-hoc hardness for synthetic data
     for generative_model in tqdm(generative_models):
-        save_path_confidences = os.path.join(save_dir, f"{generative_model}_{suffix}_confidences.pkl")
-        save_path_margins = os.path.join(save_dir, f"{generative_model}_{suffix}_margins.pkl")
-        if os.path.exists(save_path_confidences) and os.path.exists(save_path_margins) and not overwrite:
-            continue
+        if os.path.exists(os.path.join(save_dir, f"{generative_model}_logit_confidences.pkl")) and not overwrite:
+            continue  # Post-hoc hardness have been estimated for this generative_model, so we skip it
+
         print(f'Estimating post-hoc hardness for {generative_model}.')
-
         synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model, True)
-        confidences, margins = estimate_and_save_post_hoc_hardness(
-            synthetic_loader, model_paths, num_classes, use_logits
+        logit_confidences, softmax_confidences, logit_margins, softmax_margins = estimate_and_save_post_hoc_hardness(
+            synthetic_loader, model_paths, num_classes
         )
-        for path, hardness_estimates in [(save_path_confidences, confidences), (save_path_margins, margins)]:
-            with open(path, "wb") as file:
-                pickle.dump(hardness_estimates, file)
+        with open(os.path.join(save_dir, f"{generative_model}_logit_confidences.pkl"), 'wb') as file:
+            pickle.dump(logit_confidences, file)
+        with open(os.path.join(save_dir, f"{generative_model}_softmax_confidences.pkl"), 'wb') as file:
+            pickle.dump(softmax_confidences, file)
+        with open(os.path.join(save_dir, f"{generative_model}_logit_margins.pkl"), 'wb') as file:
+            pickle.dump(logit_margins, file)
+        with open(os.path.join(save_dir, f"{generative_model}_softmax_margins.pkl"), 'wb') as file:
+            pickle.dump(softmax_margins, file)
 
-    save_path_confidences = os.path.join(save_dir, f'real_test_{suffix}_confidences.pkl')
-    save_path_margins = os.path.join(save_dir, f'real_test_{suffix}_margins.pkl')
-    if not (os.path.exists(save_path_confidences) and os.path.exists(save_path_margins)) or overwrite:
+    # Estimate post-hoc hardness for real test data (for comparison)
+    if not (os.path.join(save_dir, f'real_test_logit_confidences.pkl')) or overwrite:
         print('Estimating post-hoc hardness for real data.')
 
         _, _, test_loader, _ = load_real_dataset(dataset_name)
-        confidences, margins = estimate_and_save_post_hoc_hardness(test_loader, model_paths, num_classes, use_logits)
-        for path, hardness_estimates in [(save_path_confidences, confidences), (save_path_margins, margins)]:
-            with open(path, "wb") as file:
-                pickle.dump(hardness_estimates, file)
+        logit_confidences, softmax_confidences, logit_margins, softmax_margins = estimate_and_save_post_hoc_hardness(
+            test_loader, model_paths, num_classes
+        )
+
+        with open(os.path.join(save_dir, f'real_test_logit_confidences.pkl'), 'wb') as file:
+            pickle.dump(logit_confidences, file)
+        with open(os.path.join(save_dir, f'real_test_softmax_confidences.pkl'), 'wb') as file:
+            pickle.dump(softmax_confidences, file)
+        with open(os.path.join(save_dir, f'real_test_logit_margins.pkl'), 'wb') as file:
+            pickle.dump(logit_margins, file)
+        with open(os.path.join(save_dir, f'real_test_softmax_margins.pkl'), 'wb') as file:
+            pickle.dump(softmax_margins, file)
 
 
 if __name__ == '__main__':
@@ -81,8 +90,6 @@ if __name__ == '__main__':
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
     parser.add_argument('--overwrite', action='store_true', default=False,
                         help='Overwrite existing margin files if they already exist.')
-    parser.add_argument('--use_logits', action='store_true', default=False,
-                        help='Raise this flag to use logits. Otherwise softmax probabilities will be computed')
 
     args = parser.parse_args()
-    main(args.dataset_name, args.overwrite, args.use_logits)
+    main(args.dataset_name, args.overwrite)
