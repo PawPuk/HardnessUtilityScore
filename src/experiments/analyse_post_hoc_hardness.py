@@ -6,6 +6,7 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 
 from src.config.config import ROOT
 from src.data.datasets import IndexedDataset
@@ -25,31 +26,32 @@ def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
     return avg_over_models
 
 
+def sort_models(file_list: List[str]) -> List[str]:
+    """Sort files by the sorting_type."""
+    return sorted(file_list)
+
+
 def plot_hardness_for_type(
         real_hardness: np.ndarray,
         model_files: List[str],
-        hardness_type: str
+        hardness_type: str,
+        fig_save_dir: str
 ) -> None:
     """
     For a given hardness type (e.g., 'logit_margins'), find all model .pkl files
     that contain that type in their name (excluding real_test files), average over
     model indices, and plot a histogram for each model. If a real_test file
-    named `real_test_{hardness_type}.pkl` exists, overlay its hardness distribution
-    as a black line in every subplot.
+    named `real_test_{hardness_type}.pkl` exists, overlay its hardness distribution.
     """
     n_files = len(model_files)
     cols = min(4, n_files)
     rows = (n_files + cols - 1) // cols
 
     fig_hist, axes_hist = plt.subplots(rows, cols, figsize=(16, 10))
-    fig_sorted, axes_sorted = plt.subplots(rows, cols, figsize=(16, 10))
     axes_hist = axes_hist.flatten()
-    axes_sorted = axes_sorted.flatten()
-
-    sorted_real = np.sort(real_hardness)
 
     # For each model file, compute averaged hardness and plot histogram
-    for ax_hist, ax_sorted, fpath in zip(axes_hist, axes_sorted, model_files):
+    for ax_hist, fpath in zip(axes_hist, model_files):
         hardness = compute_avg_hardness_per_model(fpath)
 
         # ---- Histogram (density) ----
@@ -57,13 +59,6 @@ def plot_hardness_for_type(
         ax_hist.hist(real_hardness, bins=50, histtype='step', color='black', linewidth=2, density=True, label='Real')
         ax_hist.set_xlabel('Hardness')
         ax_hist.set_ylabel('Density')
-
-        # ---- Sorted values ----
-        sorted_model = np.sort(hardness)
-        ax_sorted.plot(sorted_model, label='Model', alpha=0.7)
-        ax_sorted.plot(sorted_real, label='Real', color='black', linestyle='--', linewidth=2)
-        ax_sorted.set_xlabel('Sample index (sorted)')
-        ax_sorted.set_ylabel('Hardness value')
 
         # ---- KL divergence (Real vs Synthetic) ----
         # Define common bins covering both distributions
@@ -90,25 +85,15 @@ def plot_hardness_for_type(
         # Display on the histogram subplot (top‑left corner)
         ax_hist.text(0.05, 0.95, f'KL = {kl_div:.3f}', transform=ax_hist.transAxes, verticalalignment='top',
                      bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-        for ax in [ax_hist, ax_sorted]:
-            ax.set_title(os.path.basename(fpath).replace('.pkl', ''))
+        ax_hist.set_title(os.path.basename(fpath).replace('.pkl', ''))
 
     # Hide any unused subplots
     for ax in axes_hist[n_files:]:
         ax.axis('off')
-    for ax in axes_sorted[n_files:]:
-        ax.axis('off')
 
     fig_hist.suptitle(f"Hardness type: {hardness_type} – Histograms", fontsize=14)
     fig_hist.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_hist.savefig(f"hardness_histograms_{hardness_type}.png", dpi=150, bbox_inches='tight')
-
-    fig_sorted.suptitle(f"Hardness type: {hardness_type} – Sorted values", fontsize=14)
-    fig_sorted.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_sorted.savefig(f"hardness_sorted_{hardness_type}.png", dpi=150, bbox_inches='tight')
-
-    plt.show()
+    fig_hist.savefig(os.path.join(fig_save_dir, f"hardness_histograms.png"), dpi=150, bbox_inches='tight')
 
 
 def load_labels(dataset: IndexedDataset) -> np.ndarray:
@@ -140,14 +125,17 @@ def plot_class_hardness(
         real_hardness: np.ndarray,
         model_files: List[str],
         hardness_type: str,
+        fig_save_dir: str,
         num_classes: int = 100
 ) -> None:
     """
     For a given hardness type, compute per-class mean hardness for real and all models,
-    then create two figures:
-      1) Bar charts: one subplot per model, showing real vs model class means.
-      2) Line plot: all models + real over classes sorted by real hardness.
-    Classes are sorted by real hardness (ascending). Missing classes (NaNs) are left as gaps.
+    then create a figure with one subplot per model.
+    In each subplot:
+      - A black line shows the real class means (classes sorted by real hardness).
+      - Bars show the model's class means.
+      - NRMSE is displayed in the top‑right corner.
+    X‑axis ticks are removed because there are too many classes.
     """
     _, _, _, test_set = load_real_dataset(dataset_name)
     real_labels = load_labels(test_set)
@@ -182,8 +170,13 @@ def plot_class_hardness(
         model_means = model_class_means[idx]
         sorted_model_means = model_means[sorted_classes]
 
-        ax.bar(x_positions, sorted_model_means, width=0.6, color='C0', alpha=0.7, label='Model')
+        ax.plot(x_positions, sorted_model_means, color='C0', linestyle='-', linewidth=2, label='Model')
         ax.plot(x_positions, sorted_real_means, color='black', linestyle='-', linewidth=2, label='Real')
+
+        rmse = np.mean((sorted_real_means - sorted_model_means) ** 2)
+        rme = np.mean(sorted_real_means - sorted_model_means)
+        ax.text(0.95, 0.95, f'rmse = {rmse:.3f}\nrme = {rme:.3f}', transform=ax.transAxes, verticalalignment='top',
+                horizontalalignment='right', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
         ax.set_xticks([])
         ax.set_xlabel('Class ID (sorted by real hardness)')
@@ -197,33 +190,35 @@ def plot_class_hardness(
 
     fig.suptitle(f"Class-wise Hardness – {hardness_type} (real line + model bars)", fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(f"class_hardness_bars_{hardness_type}.png", dpi=150, bbox_inches='tight')
-    plt.show()
+    fig.savefig(os.path.join(fig_save_dir, f"class_hardness_spectra.png"), dpi=150, bbox_inches='tight')
 
 
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
-    hardness_types = ["logit_margins", "softmax_margins", "logit_confidences", "softmax_confidences"]
+    hardness_types = ["softmax_margins", "softmax_confidences", "logit_margins", "logit_confidences"]
 
     all_files = glob(os.path.join(base_dir, "*.pkl"))
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    for hardness_type in hardness_types:
-        # Separate the real_test file for this type and model files
-        real_file, model_files = None, []
-        for f in all_files:
-            basename = os.path.basename(f)
-            if hardness_type in basename:
-                if basename == f"real_test_{hardness_type}.pkl":
-                    real_file = f
-                else:
-                    model_files.append(f)
-        real_hardness = compute_avg_hardness_per_model(real_file)
-        sorted_models = sorted(model_files)
+    for generative_model in ['stylegan', 'edm']:
+        for hardness_type in tqdm(hardness_types):
+            # Separate the real_test file for this type and model files
+            real_file, model_files = None, []
+            for f in all_files:
+                basename = os.path.basename(f)
+                if hardness_type in basename:
+                    if basename == f"real_test_{hardness_type}.pkl":
+                        real_file = f
+                    elif generative_model in basename:
+                        model_files.append(f)
+            real_hardness = compute_avg_hardness_per_model(real_file)
 
-        plot_hardness_for_type(real_hardness, sorted_models, hardness_type)
-        plot_class_hardness(dataset_name, real_hardness, sorted_models, hardness_type)
+            model_files = sort_models(model_files)
+            fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, generative_model, hardness_type)
+            os.makedirs(fig_save_dir, exist_ok=True)
+            plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
+            plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
 
 
 if __name__ == "__main__":
