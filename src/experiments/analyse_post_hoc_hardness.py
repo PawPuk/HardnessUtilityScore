@@ -2,7 +2,9 @@ import argparse
 from glob import glob
 import os
 import pickle
+import shutil
 from typing import List
+import zipfile
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -146,10 +148,17 @@ def plot_class_hardness(
         h = compute_avg_hardness_per_model(fpath)
         basename = os.path.basename(fpath)
         generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
+
+        synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
+        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
+            zip_ref.extractall(synth_root)
+
         _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
         synthetic_labels = load_labels(synthetic_set)
         means = compute_class_means(h, synthetic_labels, num_classes)
         model_class_means.append(means)
+
+        shutil.rmtree(os.path.join(synth_root, generative_model))
 
     valid_real = ~np.isnan(real_class_means)
     sorted_indices = np.argsort(real_class_means[valid_real])

@@ -5,6 +5,8 @@ This module loads the models pre-trained on balanced dataset to measure and save
 import argparse
 import os
 import pickle
+import shutil
+import zipfile
 from typing import Dict, List, Tuple
 
 import torch
@@ -40,16 +42,23 @@ def main(
     num_classes = config['num_classes']
 
     synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
-    generative_models = sorted([d for d in os.listdir(synth_root) if os.path.isdir(os.path.join(synth_root, d))])
-
+    generative_model_zips = sorted(
+        f for f in os.listdir(synth_root)
+        if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f
+    )
     model_paths = extract_paths_to_pretrained_models(dataset_name)
     save_dir = os.path.join(ROOT, "Results", dataset_name, 'post_hoc_hardness_estimates')
     os.makedirs(save_dir, exist_ok=True)
 
     # Estimate post-hoc hardness for synthetic data
-    for generative_model in tqdm(generative_models):
+    for zip_file in tqdm(generative_model_zips):
+        generative_model = os.path.splitext(zip_file)[0]
         if os.path.exists(os.path.join(save_dir, f"{generative_model}_logit_confidences.pkl")) and not overwrite:
             continue  # Post-hoc hardness have been estimated for this generative_model, so we skip it
+
+        print(f'Extracting {generative_model}.')
+        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
+            zip_ref.extractall(synth_root)
 
         print(f'Estimating post-hoc hardness for {generative_model}.')
         synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model, True)
@@ -64,6 +73,8 @@ def main(
             pickle.dump(logit_margins, file)
         with open(os.path.join(save_dir, f"{generative_model}_softmax_margins.pkl"), 'wb') as file:
             pickle.dump(softmax_margins, file)
+
+        shutil.rmtree(os.path.join(synth_root, generative_model))
 
     # Estimate post-hoc hardness for real test data (for comparison)
     if not (os.path.join(save_dir, f'real_test_logit_confidences.pkl')) or overwrite:
