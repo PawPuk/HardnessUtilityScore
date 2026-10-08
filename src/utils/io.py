@@ -72,16 +72,3 @@ def extract_paths_to_pretrained_models(dataset_name: str) -> Dict[int, Dict[int,
         model_paths.setdefault(d_idx, {})[m_idx] = filepath
 
     return model_paths
-
-
-def load_sample_allocations(hardness_save_dir: str, dataset_name: str) -> Dict[float, List[int]]:
-    """Extracts the sample allocations after resampling for different alphas"""
-    sample_allocations = {}
-    for root, dirs, files in os.walk(hardness_save_dir):
-        if f"{dataset_name}/" in root and 'alpha_' in root:
-            alpha = float(root.split('alpha_')[-1])
-            for file in files:
-                file_path = os.path.join(root, file)
-                sample_allocations[alpha] = load_results(file_path)
-    print(f'Loaded info on class-wise sample allocation after hardness-based resampling:\n\t{sample_allocations}')
-    return sample_allocations

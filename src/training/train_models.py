@@ -159,4 +159,5 @@ class ModelTrainer:
                     # Final step of in-hoc hardness estimation - averaging over all training signals.
                     in_hoc_hardness_estimates[(dataset_id, model_id)] = np.mean(
                         in_hoc_hardness_estimates[(dataset_id, model_id)], axis=1)
-                    save_in_hoc_hardness_estimates(in_hoc_hardness_estimates, (dataset_id, model_id), self.dataset_name)
+                    save_in_hoc_hardness_estimates(in_hoc_hardness_estimates, (dataset_id, model_id),
+                                                   self.dataset_name)

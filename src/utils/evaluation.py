@@ -1,6 +1,6 @@
 from collections import defaultdict
 import os
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 
 import dill
 import numpy as np
@@ -36,49 +36,6 @@ def evaluate_model(
     accuracy = 100 * correct / total
     avg_loss = running_loss / total
     return avg_loss, accuracy
-
-
-def compute_sample_allocation_for_resampling(
-        hardness_scores: List[float],
-        labels: List[int],
-        num_classes: int,
-        num_training_samples: int,
-        alpha: float = 1.0
-) -> List[int]:
-    """Compute number of samples per class after hardness-based resampling according to hardness_scores."""
-    # Divide the instant-level hardness estimates into classes.
-    hardness_by_class = {class_id: [] for class_id in range(num_classes)}
-    for i, label in enumerate(labels):
-        hardness_by_class[label].append((i, hardness_scores[i]))
-
-    # Compute (or extract) average hardness of each class
-    class_hardness = {class_id: np.mean([score for _, score in entries])
-                      for class_id, entries in hardness_by_class.items()}
-
-    # Add offset in case some classes have negative hardness values to not get nonsensical resampling ratios.
-    if min(class_hardness.values()) < 0:
-        offset = -min(class_hardness.values())
-        for class_id in range(num_classes):
-            class_hardness[class_id] += offset + 0.0001  # Adding epsilon to not divide by zero later on.
-
-    # Compute the resampling ratios for each class.
-    hardness_ratios = {class_id: 1 / float(val) for class_id, val in class_hardness.items()}
-    ratios = {class_id: class_hardness / sum(hardness_ratios.values())
-              for class_id, class_hardness in hardness_ratios.items()}
-
-    # Compute the amount of samples per class after resampling.
-    samples_per_class = [int(round(ratio * num_training_samples)) for ratio in ratios.values()]
-
-    # Tailor the degree of the introduces data imbalance (only applicable if alpha is larger than 1).
-    average_sample_count = int(np.mean(samples_per_class))
-    for class_id in range(num_classes):
-        absolute_difference = abs(samples_per_class[class_id] - average_sample_count)
-        if samples_per_class[class_id] > average_sample_count:
-            samples_per_class[class_id] = average_sample_count + int(alpha * absolute_difference)
-        else:
-            samples_per_class[class_id] = average_sample_count - int(alpha * absolute_difference)
-
-    return samples_per_class
 
 
 def evaluate_ensembles(

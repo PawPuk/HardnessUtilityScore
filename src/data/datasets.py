@@ -41,27 +41,3 @@ class SyntheticImageDataset(torch.utils.data.Dataset):
         if self.transform:
             img = self.transform(img)
         return img, label
-
-
-class AugmentedSubset(torch.utils.data.Dataset):
-    def __init__(self, subset, transform=None):
-        self.subset = subset
-        self.transform = transform
-
-    def __len__(self) -> int:
-        return len(self.subset)
-
-    def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor, int]:
-        # Get the original data and label from the subset
-        data, label, _ = self.subset[idx]
-
-        # Apply the transformations to the data
-        if self.transform:
-            data = self.transform(data)
-        return data, label, idx
-
-    def __iter__(self):
-        for idx in range(len(self)):
-            yield self[idx]
-
-

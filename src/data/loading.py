@@ -13,32 +13,13 @@ import torchvision
 import torchvision.transforms as transforms
 
 from src.config.config import get_config, ROOT
-from src.data.datasets import AugmentedSubset, IndexedDataset, SyntheticImageDataset
-
-
-def perform_data_augmentation(
-        dataset: AugmentedSubset,
-        dataset_name: str
-) -> AugmentedSubset:
-    """Applies data augmentation to the dataset. It firstly converts the images from Tensor to PIL to ensure the whole
-    process is intact. This is useful in scenarios where we initially load the training dataset without applying data
-    augmentation - load_dataset() with apply_augmentation=False. Specifically, in experiment2.py and experiment3.py"""
-    mean = get_config(dataset_name)['mean']
-    std = get_config(dataset_name)['std']
-
-    data_augmentation = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-    ])
-    return AugmentedSubset(dataset, transform=data_augmentation)
+from src.data.datasets import IndexedDataset, SyntheticImageDataset
 
 
 def get_transform(
         apply_augmentation: bool,
-        config: Dict[str, Union[int, float, List[int], List[float], List[str], Tuple[float, float, float]]]
+        config: Dict[str, Union[int, float, str, List[int], List[float], List[str], Tuple[
+                                     float, float, float]]]
 ) -> Tuple[transforms.Compose, transforms.Compose]:
     """For getting the transformation to the training and test sets."""
     if apply_augmentation:
@@ -46,10 +27,12 @@ def get_transform(
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, padding=4),
             transforms.ToTensor(),
-            transforms.Normalize(config['mean'], config['std']),
+            transforms.Normalize(config['mean'], config['std'])
         ])
     else:
-        train_transform = transforms.ToTensor()
+        train_transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
 
     test_transform = transforms.Compose([
         transforms.ToTensor(),
