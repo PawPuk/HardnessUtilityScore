@@ -147,6 +147,7 @@ def load_real_dataset(
     config = get_config(dataset_name)
 
     train_transform, test_transform = get_transform(apply_augmentation, config)
+    print(f"Downloading data to {os.path.join(ROOT, 'data')}")
     if dataset_name == 'CIFAR-100':
         training_set = torchvision.datasets.CIFAR100(root=os.path.join(ROOT, 'data'), download=True,
                                                      transform=train_transform)

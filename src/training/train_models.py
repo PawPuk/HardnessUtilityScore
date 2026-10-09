@@ -94,7 +94,7 @@ class ModelTrainer:
             model.train()
             running_loss, correct_train, total_train = 0.0, 0, 0
 
-            for inputs, labels, indices in self.training_loaders[current_dataset_index]:
+            for inputs, labels, indices in tqdm(self.training_loaders[current_dataset_index]):
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 optimizer.zero_grad()
                 outputs = model(inputs)
@@ -122,15 +122,14 @@ class ModelTrainer:
                       f'Test Loss: {avg_test_loss:.4f}, Test Acc: {test_accuracy:.2f}%')
 
             # We save probe models to later verify if they can be used for post-hoc hardness estimation.
-            if epoch + 1 == self.config['save_epoch']:
-                if self.save_probe_models:
-                    save_path = os.path.join(self.save_dir, f'dataset_{current_dataset_index}_model_'
-                                                            f'{current_model_index}'
-                                                            f'_epoch_{epoch + 1}.pth')
-                    # Move the model to CPU to use it on local machines without CUDA support later.
-                    model.to('cpu')
-                    torch.save(model.state_dict(), save_path)
-                    model.to(DEVICE)
+            if epoch + 1 == self.config['save_epoch'] and self.save_probe_models:
+                save_path = os.path.join(self.save_dir, f'dataset_{current_dataset_index}_model_'
+                                                        f'{current_model_index}'
+                                                        f'_epoch_{epoch + 1}.pth')
+                # Move the model to CPU to use it on local machines without CUDA support later.
+                model.to('cpu')
+                torch.save(model.state_dict(), save_path)
+                model.to(DEVICE)
 
         # Save model after full training. It will be used later for post-hoc hardness estimation.
         final_save_path = os.path.join(self.save_dir, f'dataset_{current_dataset_index}'

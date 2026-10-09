@@ -4,6 +4,7 @@ These estimates will later be used to compute the resampling ratios for our Hard
 """
 
 import argparse
+import sys
 
 from src.data.loading import load_real_dataset
 from src.training.train_models import ModelTrainer
@@ -23,7 +24,7 @@ def main(dataset_name: str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
-    parser.add_argument('--dataset_name', type=str, required=True,
+    parser.add_argument('--dataset_name', type=str, required=False, default='CIFAR-100',
                         choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
 
     args = parser.parse_args()
