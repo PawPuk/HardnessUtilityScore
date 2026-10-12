@@ -140,7 +140,7 @@ def plot_class_hardness(dataset_name: str, real_hardness: np.ndarray, model_file
     real_class_means = compute_class_means(real_hardness, real_labels, num_classes)
 
     model_class_means = []
-    for fpath in model_files:
+    for fpath in tqdm(model_files, 'Iterating through model_files for class-level visualisation'):
         h = compute_avg_hardness_per_model(fpath)
         basename = os.path.basename(fpath)
         generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
@@ -289,17 +289,18 @@ def main(dataset_name: str):
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, 'edm_metrics.zip'), 'r') as zip_ref:
-        zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
-
     for generative_model in ['stylegan', 'edm']:
+        with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics.zip'), 'r') as zip_ref:
+            zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
+
         for hardness_type in tqdm(hardness_types):
             # Separate the real_test file for this type and model files
             real_file, model_files, snapshot_files, IS_metrics, FID_metrics = None, [], [], [], []
             for f in all_files:
                 basename = os.path.basename(f)
-                snapshot_idx = basename.split("_")[1]
-                snapshot_files.append(f'snapshot_{snapshot_idx}.json')
+                if generative_model in basename:
+                    snapshot_idx = basename.split("_")[1]
+                    snapshot_files.append(f'snapshot_{snapshot_idx}.json')
                 if hardness_type in basename:
                     if basename == f"real_test_{hardness_type}.pkl":
                         real_file = f
@@ -309,7 +310,7 @@ def main(dataset_name: str):
             model_files = sort_models(model_files)
 
             for snapshot_file in snapshot_files:
-                with open(os.path.join(ROOT, 'synthetic_data', dataset_name, 'edm_metrics', snapshot_file)) as f:
+                with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics', snapshot_file)) as f:
                     d = json.load(f)
                     IS_metrics.append(d['Inception_Score_Mean'])
                     FID_metrics.append(d['Frechet_Inception_Distance'])
@@ -324,7 +325,7 @@ def main(dataset_name: str):
             plot_metrics(metrics, fig_save_dir)
             plot_correlations(metrics, fig_save_dir)
 
-    shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, 'edm_metrics'))
+        shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics'))
 
 
 if __name__ == "__main__":
