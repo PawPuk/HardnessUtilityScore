@@ -126,7 +126,7 @@ def get_dataloader(
         shuffle: bool = False
 ):
     """Create a DataLoader with deterministic worker initialization."""
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2, worker_init_fn=worker_init_fn)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, worker_init_fn=worker_init_fn)
 
 
 def load_real_dataset(
@@ -171,7 +171,8 @@ def load_real_dataset(
 def load_synthetic_dataset(
         dataset_name: str,
         generative_model: str,
-        normalize: bool
+        normalize: bool,
+        shuffle: bool = False,
 ) -> Tuple[DataLoader[IndexedDataset], IndexedDataset]:
     config = get_config(dataset_name)
     unnormalized_transform, normalized_transform = get_transform(False, config)
@@ -186,6 +187,6 @@ def load_synthetic_dataset(
         raise Exception
 
     synthetic_set = IndexedDataset(synthetic_set)
-    synthetic_loader = get_dataloader(synthetic_set, config['batch_size'] * 2)
+    synthetic_loader = get_dataloader(synthetic_set, config['batch_size'], shuffle)
 
     return synthetic_loader, synthetic_set

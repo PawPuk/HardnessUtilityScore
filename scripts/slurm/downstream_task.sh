@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpushort
-#SBATCH --nodes=8
+#SBATCH -n 8
 #SBATCH --cpus-per-gpu=8
 #SBATCH --mem-per-cpu=11G
 #SBATCH --gres=gpu:1

@@ -8,12 +8,13 @@ import os
 import shutil
 import zipfile
 
-from src.config.config import ROOT
+from src.config.config import DEVICE, ROOT
 from src.data.loading import load_real_dataset, load_synthetic_dataset
 from src.training.train_models import ModelTrainer
 
 
 def main(dataset_name: str, generative_architecture: str):
+    print(DEVICE)
     _, _, test_loader, _ = load_real_dataset(dataset_name)
 
     synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
@@ -21,20 +22,19 @@ def main(dataset_name: str, generative_architecture: str):
         f for f in os.listdir(synth_root)
         if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f and generative_architecture in f
     )
-
     for i, zip_file in enumerate(generative_model_zips):
-        if not i % 5 == 0 :
+        if not i % 5 == 0:
             continue
         generative_model = os.path.splitext(zip_file)[0]
         with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
             zip_ref.extractall(synth_root)
 
-        synthetic_loader, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
+        synthetic_loader, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, True, True)
         training_set_size = len(synthetic_set)
         training_loaders = [synthetic_loader]
         save_suffix = f'{generative_model}'
         trainer = ModelTrainer(training_set_size, training_loaders, test_loader, dataset_name, save_suffix,
-                               estimate_hardness=True, save_probe_models=False)
+                               estimate_hardness=False, save_probe_models=False)
         trainer.train_ensemble()
 
         shutil.rmtree(os.path.join(synth_root, generative_model))
