@@ -288,31 +288,32 @@ def main(dataset_name: str):
 
     syn_label_save_path = os.path.join(ROOT, 'synthetic_data', dataset_name, 'synthetic_labels.json')
     if os.path.exists(syn_label_save_path):
-        synthetic_labels = np.load(syn_label_save_path)
+        with open(syn_label_save_path, 'r') as f:
+            synthetic_labels = {key: np.asarray(value) for key, value in json.load(f).items()}
     else:
         synthetic_labels = {}
     for f in tqdm(all_files, desc='Extracting synthetic labels'):
         basename = os.path.basename(f)
         generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
-
-        if 'metric' or 'real' in f or generative_model in synthetic_labels.keys():
+        if 'metric' in f or 'real' in f or generative_model in synthetic_labels.keys():
             continue
 
         synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
         with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
             zip_ref.extractall(synth_root)
-
-        # In the below the value of normalize doesn't matter as synthetic_set is only used to extract labels
-        _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
-        synthetic_labels[generative_model] = load_labels(synthetic_set)
+            prefix = f'{generative_model}/'
+            image_names = sorted(name for name in zip_ref.namelist() if name.startswith(prefix)
+                                 and name.endswith('.jpg'))
+        synthetic_labels[generative_model] = np.array([int(os.path.basename(name).split('_')[1].split('.')[0])
+                                                       for name in image_names])
         with open(syn_label_save_path, 'w') as f:
-            json.dump(synthetic_labels, f)
+            json.dump({key: value.tolist() for key, value in synthetic_labels.items()}, f)
 
         shutil.rmtree(os.path.join(synth_root, generative_model))
 
     for hardness_type in tqdm(hardness_types):
         for generative_architecture in ['stylegan', 'edm']:
-            with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics.zip'),
+            with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics.zip'),
                                  'r') as zip_ref:
                 zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
 
