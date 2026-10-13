@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import shutil
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import zipfile
 
 import matplotlib.pyplot as plt
@@ -124,8 +124,15 @@ def compute_class_means(hardness: np.ndarray, labels: np.ndarray, num_classes: i
     return class_means
 
 
-def plot_class_hardness(dataset_name: str, real_hardness: np.ndarray, model_files: List[str], hardness_type: str,
-                        fig_save_dir: str, num_classes: int = 100) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+def plot_class_hardness(
+        dataset_name: str,
+        real_hardness: np.ndarray,
+        model_files: List[str],
+        hardness_type: str,
+        fig_save_dir: str,
+        synthetic_labels: Dict[str, np.ndarray],
+        num_classes: int = 100
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """
     For a given hardness type, compute per-class mean hardness for real and all models,
     then create a figure with one subplot per model.
@@ -140,22 +147,12 @@ def plot_class_hardness(dataset_name: str, real_hardness: np.ndarray, model_file
     real_class_means = compute_class_means(real_hardness, real_labels, num_classes)
 
     model_class_means = []
-    for fpath in tqdm(model_files, 'Iterating through model_files for class-level visualisation'):
+    for fpath in tqdm(model_files, 'Computing class means over model_files for class-level visualisation'):
         h = compute_avg_hardness_per_model(fpath)
         basename = os.path.basename(fpath)
         generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
-
-        synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
-        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
-            zip_ref.extractall(synth_root)
-
-        # In the below the value of normalize doesn't matter as synthetic_set is only used to extract labels
-        _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
-        synthetic_labels = load_labels(synthetic_set)
-        means = compute_class_means(h, synthetic_labels, num_classes)
+        means = compute_class_means(h, synthetic_labels[generative_model], num_classes)
         model_class_means.append(means)
-
-        shutil.rmtree(os.path.join(synth_root, generative_model))
 
     valid_real = ~np.isnan(real_class_means)
     sorted_indices = np.argsort(real_class_means[valid_real])
@@ -289,43 +286,70 @@ def main(dataset_name: str):
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    for generative_model in ['stylegan', 'edm']:
-        with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics.zip'), 'r') as zip_ref:
-            zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
+    syn_label_save_path = os.path.join(ROOT, 'synthetic_data', dataset_name, 'synthetic_labels.json')
+    if os.path.exists(syn_label_save_path):
+        synthetic_labels = np.load(syn_label_save_path)
+    else:
+        synthetic_labels = {}
+    for f in tqdm(all_files, desc='Extracting synthetic labels'):
+        basename = os.path.basename(f)
+        generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
 
-        for hardness_type in tqdm(hardness_types):
+        if 'metric' or 'real' in f or generative_model in synthetic_labels.keys():
+            continue
+
+        synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
+        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
+            zip_ref.extractall(synth_root)
+
+        # In the below the value of normalize doesn't matter as synthetic_set is only used to extract labels
+        _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
+        synthetic_labels[generative_model] = load_labels(synthetic_set)
+        with open(syn_label_save_path, 'w') as f:
+            json.dump(synthetic_labels, f)
+
+        shutil.rmtree(os.path.join(synth_root, generative_model))
+
+    for hardness_type in tqdm(hardness_types):
+        for generative_architecture in ['stylegan', 'edm']:
+            with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics.zip'),
+                                 'r') as zip_ref:
+                zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
+
             # Separate the real_test file for this type and model files
             real_file, model_files, snapshot_files, IS_metrics, FID_metrics = None, [], [], [], []
             for f in all_files:
                 basename = os.path.basename(f)
-                if generative_model in basename:
+                if generative_architecture in basename:
                     snapshot_idx = basename.split("_")[1]
                     snapshot_files.append(f'snapshot_{snapshot_idx}.json')
                 if hardness_type in basename:
                     if basename == f"real_test_{hardness_type}.pkl":
                         real_file = f
-                    elif generative_model in basename:
+                    elif generative_architecture in basename:
                         model_files.append(f)
             real_hardness = compute_avg_hardness_per_model(real_file)
             model_files = sort_models(model_files)
 
             for snapshot_file in snapshot_files:
-                with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics', snapshot_file)) as f:
+                with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics',
+                                       snapshot_file)) as f:
                     d = json.load(f)
                     IS_metrics.append(d['Inception_Score_Mean'])
                     FID_metrics.append(d['Frechet_Inception_Distance'])
 
-            fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, generative_model, hardness_type)
+            fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, generative_architecture, hardness_type)
             os.makedirs(fig_save_dir, exist_ok=True)
             kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            rmses, rmes = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
+            rmses, rmes = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir,
+                                              synthetic_labels)
 
             metrics = {"RMSE": np.asarray(rmses), "RME": np.asarray(rmes), "KL_DIV": np.asarray(kl_divs),
                        "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
             plot_metrics(metrics, fig_save_dir)
             plot_correlations(metrics, fig_save_dir)
 
-        shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_model}_metrics'))
+        shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics'))
 
 
 if __name__ == "__main__":
