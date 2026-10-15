@@ -132,7 +132,7 @@ def plot_class_hardness(
         fig_save_dir: str,
         class_hardness_means: Dict[str, np.ndarray],
         num_classes: int = 100
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
     """
     For a given hardness type, compute per-class mean hardness for real and all models,
     then create a figure with one subplot per model.
@@ -160,7 +160,7 @@ def plot_class_hardness(
     axes = axes.flatten()
 
     x_positions = np.arange(len(sorted_classes))   # x coordinates for bars
-    rmses, rmes = [], []
+    rmses, rmes, mses, mes, = [], [], [], []
 
     for idx, (ax, fpath) in enumerate(zip(axes, model_files)):
         model_means = class_hardness_means[os.path.basename(fpath).split('.')[0]]
@@ -169,9 +169,12 @@ def plot_class_hardness(
         ax.plot(x_positions, sorted_model_means, color='C0', linestyle='-', linewidth=2, label='Model')
         ax.plot(x_positions, sorted_real_means, color='black', linestyle='-', linewidth=2, label='Real')
 
-        rmse = np.sqrt(np.mean((sorted_real_means - sorted_model_means) ** 2))
+        errors = sorted_model_means - sorted_real_means
+        rmse = np.sqrt(np.mean(errors ** 2))
         rmses.append(rmse)
-        rme = np.sqrt(np.mean(sorted_real_means - sorted_model_means))
+        mses.append(np.mean(errors ** 2))
+        mes.append(np.mean(errors))
+        rme = np.mean(errors / np.abs(sorted_real_means))
         rmes.append(rme)
         ax.text(0.95, 0.95, f'rmse = {rmse:.3f}\nrme = {rme:.3f}', transform=ax.transAxes, verticalalignment='top',
                 horizontalalignment='right', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
@@ -189,7 +192,7 @@ def plot_class_hardness(
     fig.suptitle(f"Class-wise Hardness – {hardness_type} (real line + model bars)", fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(os.path.join(fig_save_dir, f"class_hardness_spectra.png"), dpi=150, bbox_inches='tight')
-    return rmses, rmes
+    return rmses, rmes, mses, mes
 
 
 def plot_metrics(metrics: dict[str, np.ndarray], fig_save_dir: str):
@@ -274,7 +277,7 @@ def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
     hardness_types = ["softmax_margins", "softmax_confidences"]
 
-    all_files = sorted(glob(os.path.join(base_dir, "*.pkl")))[:5]
+    all_files = sorted(glob(os.path.join(base_dir, "*.pkl")))
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
@@ -285,6 +288,7 @@ def main(dataset_name: str):
     else:
         class_hardness_means = {}
 
+    i = 0
     for fpath in tqdm(all_files, desc='Extracting synthetic labels'):
         basename = os.path.basename(fpath)
         generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
@@ -328,7 +332,7 @@ def main(dataset_name: str):
                     elif generative_architecture in basename:
                         model_files.append(f)
             real_hardness = compute_avg_hardness_per_model(real_file)
-            model_files = sort_models(model_files)
+            model_files = sort_models(model_files)[:5]
 
             for snapshot_file in set(snapshot_files):
                 with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics',
@@ -341,11 +345,12 @@ def main(dataset_name: str):
             os.makedirs(fig_save_dir, exist_ok=True)
 
             kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            rmses, rmes = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir,
+            errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir,
                                               class_hardness_means)
 
-            metrics = {"RMSE": np.asarray(rmses), "RME": np.asarray(rmes), "KL_DIV": np.asarray(kl_divs),
-                       "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
+            metrics = {"RMSE": np.asarray(errors[0]), "RME": np.asarray(errors[1]), 'MSES': np.asarray(errors[2]),
+                       'MES': np.asarray(errors[3]), "KL_DIV": np.asarray(kl_divs), "IS": np.asarray(IS_metrics),
+                       "FID": np.asarray(FID_metrics)}
             plot_metrics(metrics, fig_save_dir)
             plot_correlations(metrics, fig_save_dir)
 
@@ -354,8 +359,8 @@ def main(dataset_name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare hardness distributions between real and synthetic data.')
-    parser.add_argument('--dataset_name', type=str, required=True,
-                        choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
+    parser.add_argument('--dataset_name', type=str, required=True, choices=['CIFAR-100'],
+                        help='Dataset name: CIFAR-100')
 
     args = parser.parse_args()
     main(args.dataset_name)

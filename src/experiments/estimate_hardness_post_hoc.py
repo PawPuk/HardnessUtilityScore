@@ -44,7 +44,7 @@ def main(
     synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
     generative_model_zips = sorted(
         f for f in os.listdir(synth_root)
-        if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f
+        if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f and 'zip' in f
     )
     model_paths = extract_paths_to_pretrained_models(dataset_name)
     save_dir = os.path.join(ROOT, "Results", dataset_name, 'post_hoc_hardness_estimates')
@@ -77,7 +77,7 @@ def main(
         shutil.rmtree(os.path.join(synth_root, generative_model))
 
     # Estimate post-hoc hardness for real test data (for comparison)
-    if not (os.path.join(save_dir, f'real_test_logit_confidences.pkl')) or overwrite:
+    if not os.path.exists(os.path.join(save_dir, f'real_test_logit_confidences.pkl')) or overwrite:
         print('Estimating post-hoc hardness for real data.')
 
         _, _, test_loader, _ = load_real_dataset(dataset_name)
