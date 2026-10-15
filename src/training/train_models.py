@@ -153,9 +153,7 @@ class ModelTrainer:
         model.to('cpu')
         torch.save(model.state_dict(), final_save_path)
 
-    def train_ensemble(
-            self
-    ):
+    def train_ensemble(self):
         """Train an ensemble of models."""
 
         latest_model_indices = get_latest_model_indices(self.save_dir, self.config['num_epochs'], self.dataset_count)
