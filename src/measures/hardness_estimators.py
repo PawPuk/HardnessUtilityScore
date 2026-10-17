@@ -48,7 +48,7 @@ def compute_margins_and_confidences(
 
             # Scores for the true class
             correct_logit_scores = logit_scores.gather(1, labels.unsqueeze(1)).squeeze(1)
-            correct_softmax_scores = logit_scores.gather(1, labels.unsqueeze(1)).squeeze(1)
+            correct_softmax_scores = softmax_scores.gather(1, labels.unsqueeze(1)).squeeze(1)
 
             # Mask out the true class to get max among all others
             masked_logit_scores = logit_scores.clone()

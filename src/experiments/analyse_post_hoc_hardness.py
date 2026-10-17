@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import shutil
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 import zipfile
 
 import matplotlib.pyplot as plt
@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from src.config.config import ROOT
 from src.data.datasets import IndexedDataset
-from src.data.loading import load_real_dataset
+from src.data.loading import load_real_dataset, load_synthetic_dataset
 
 
 def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
@@ -30,13 +30,36 @@ def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
     return avg_over_models
 
 
+def load_IS_and_FID(
+        dataset_name: str,
+        gen_architecture: str,
+        snapshot_files: List[str]
+) -> Tuple[List[float], List[float]]:
+    IS_metrics, FID_metrics = [], []
+    with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{gen_architecture}_metrics.zip'),
+                         'r') as zip_ref:
+        zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
+    for snapshot_file in set(snapshot_files):
+        with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{gen_architecture}_metrics',
+                               snapshot_file)) as f:
+            d = json.load(f)
+            IS_metrics.append(d['Inception_Score_Mean'])
+            FID_metrics.append(d['Frechet_Inception_Distance'])
+    shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{gen_architecture}_metrics'))
+    return IS_metrics, FID_metrics
+
+
 def sort_models(file_list: List[str]) -> List[str]:
     """Sort files by the sorting_type."""
     return sorted(file_list)
 
 
-def plot_hardness_for_type(real_hardness: np.ndarray, model_files: List[str], hardness_type: str,
-                           fig_save_dir: str) -> List[np.ndarray]:
+def plot_hardness_for_type(
+        real_hardness: np.ndarray,
+        model_files: List[str],
+        hardness_type: str,
+        fig_save_dir: str
+) -> List[np.ndarray]:
     """
     For a given hardness type (e.g., 'logit_margins'), find all model .pkl files
     that contain that type in their name (excluding real_test files), average over
@@ -130,7 +153,6 @@ def plot_class_hardness(
         model_files: List[str],
         hardness_type: str,
         fig_save_dir: str,
-        class_hardness_means: Dict[str, np.ndarray],
         num_classes: int = 100
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
     """
@@ -145,6 +167,24 @@ def plot_class_hardness(
     _, _, _, test_set = load_real_dataset(dataset_name)
     real_labels = load_labels(test_set)
     real_class_means = compute_class_means(real_hardness, real_labels, num_classes)
+
+    model_class_means = []
+    for fpath in tqdm(model_files):
+        h = compute_avg_hardness_per_model(fpath)
+        basename = os.path.basename(fpath)
+        generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
+
+        synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
+        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
+            zip_ref.extractall(synth_root)
+
+        _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
+        synthetic_labels = load_labels(synthetic_set)
+        print(f'{fpath} - {len(synthetic_labels)} labels.')
+        means = compute_class_means(h, synthetic_labels, num_classes)
+        model_class_means.append(means)
+
+        shutil.rmtree(os.path.join(synth_root, generative_model))
 
     valid_real = ~np.isnan(real_class_means)
     sorted_indices = np.argsort(real_class_means[valid_real])
@@ -163,7 +203,7 @@ def plot_class_hardness(
     rmses, rmes, mses, mes, = [], [], [], []
 
     for idx, (ax, fpath) in enumerate(zip(axes, model_files)):
-        model_means = class_hardness_means[os.path.basename(fpath).split('.')[0]]
+        model_means = model_class_means[idx]
         sorted_model_means = model_means[sorted_classes]
 
         ax.plot(x_positions, sorted_model_means, color='C0', linestyle='-', linewidth=2, label='Model')
@@ -206,7 +246,7 @@ def plot_metrics(metrics: dict[str, np.ndarray], fig_save_dir: str):
     x = np.arange(n)
 
     # Five individual plots plus one combined, standardized plot.
-    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
+    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
     axes = axes.ravel()
 
     for i, name in enumerate(metric_names):
@@ -216,7 +256,7 @@ def plot_metrics(metrics: dict[str, np.ndarray], fig_save_dir: str):
         axes[i].set_ylabel(name)
         axes[i].grid(True, linestyle=":", alpha=0.5)
 
-    combined_ax = axes[5]
+    combined_ax = axes[7]
     for name, y in metrics.items():
         scaled_y = y / np.max(np.abs(y))
         combined_ax.plot(x, scaled_y, marker="o", linewidth=1.8, label=name)
@@ -275,78 +315,36 @@ def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
 
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
-    hardness_types = ["softmax_margins", "softmax_confidences"]
+    hardness_types = ["softmax_margins"]
 
-    all_files = sorted(glob(os.path.join(base_dir, "*.pkl")))
+    all_files = glob(os.path.join(base_dir, "*.pkl"))
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    syn_label_save_path = os.path.join(ROOT, 'synthetic_data', dataset_name, 'model_class_hardness_means.json')
-    if os.path.exists(syn_label_save_path):
-        with open(syn_label_save_path, 'r') as f:
-            class_hardness_means = {key: np.asarray(value) for key, value in json.load(f).items()}
-    else:
-        class_hardness_means = {}
-
-    i = 0
-    for fpath in tqdm(all_files, desc='Extracting synthetic labels'):
-        basename = os.path.basename(fpath)
-        generative_model = basename.split('_logit')[0] if 'logit' in basename else basename.split('_softmax')[0]
-
-        if 'metric' in fpath or 'real' in fpath or basename.split('.')[0] in class_hardness_means.keys():
-            continue
-
-        synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
-        with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
-            zip_ref.extractall(synth_root)
-            prefix = f'{generative_model}/'
-            image_names = sorted(name for name in zip_ref.namelist() if name.startswith(prefix)
-                                 and name.endswith('.jpg'))
-        synthetic_labels = np.array([int(os.path.basename(name).split('_')[1].split('.')[0]) for name in image_names])
-        for hardness_type in hardness_types:
-            path = os.path.join(base_dir, f'{generative_model}_{hardness_type}.pkl')
-            h = compute_avg_hardness_per_model(path)
-            class_hardness_means[f'{generative_model}_{hardness_type}'] = compute_class_means(h, synthetic_labels,
-                                                                                              num_classes=100)
-            with open(syn_label_save_path, 'w') as f:
-                json.dump({key: value.tolist() for key, value in class_hardness_means.items()}, f)
-
-        shutil.rmtree(os.path.join(synth_root, generative_model))
-
-    for hardness_type in tqdm(hardness_types):
-        for generative_architecture in ['stylegan', 'edm']:
-            with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics.zip'),
-                                 'r') as zip_ref:
-                zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
-
+    for gen_architecture in ['edm']:
+        for hardness_type in tqdm(hardness_types):
             # Separate the real_test file for this type and model files
-            gen_model, real_file, model_files, snapshot_files, IS_metrics, FID_metrics = None, None, [], [], [], []
+            real_file, model_files, snapshot_files = None, [], []
             for f in all_files:
                 basename = os.path.basename(f)
-                if generative_architecture in basename:
+                if gen_architecture in basename:
                     snapshot_idx = basename.split("_")[1]
-                    snapshot_files.append(f'snapshot_{snapshot_idx}.json')
+                    if f'snapshot_{snapshot_idx}.json' not in snapshot_files:
+                        snapshot_files.append(f'snapshot_{snapshot_idx}.json')
                 if hardness_type in basename:
                     if basename == f"real_test_{hardness_type}.pkl":
                         real_file = f
-                    elif generative_architecture in basename:
+                    elif gen_architecture in basename:
                         model_files.append(f)
             real_hardness = compute_avg_hardness_per_model(real_file)
-            model_files = sort_models(model_files)[:5]
 
-            for snapshot_file in set(snapshot_files):
-                with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics',
-                                       snapshot_file)) as f:
-                    d = json.load(f)
-                    IS_metrics.append(d['Inception_Score_Mean'])
-                    FID_metrics.append(d['Frechet_Inception_Distance'])
+            IS_metrics, FID_metrics = load_IS_and_FID(dataset_name, gen_architecture, snapshot_files)
 
-            fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, generative_architecture, hardness_type)
+            model_files = sort_models(model_files)
+            fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture, hardness_type)
             os.makedirs(fig_save_dir, exist_ok=True)
-
             kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir,
-                                              class_hardness_means)
+            errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
 
             metrics = {"RMSE": np.asarray(errors[0]), "RME": np.asarray(errors[1]), 'MSES': np.asarray(errors[2]),
                        'MES': np.asarray(errors[3]), "KL_DIV": np.asarray(kl_divs), "IS": np.asarray(IS_metrics),
@@ -354,13 +352,11 @@ def main(dataset_name: str):
             plot_metrics(metrics, fig_save_dir)
             plot_correlations(metrics, fig_save_dir)
 
-        shutil.rmtree(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{generative_architecture}_metrics'))
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare hardness distributions between real and synthetic data.')
-    parser.add_argument('--dataset_name', type=str, required=True, choices=['CIFAR-100'],
-                        help='Dataset name: CIFAR-100')
+    parser.add_argument('--dataset_name', type=str, required=True,
+                        choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
 
     args = parser.parse_args()
     main(args.dataset_name)
