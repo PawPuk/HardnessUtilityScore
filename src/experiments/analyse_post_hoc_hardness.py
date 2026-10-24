@@ -61,72 +61,79 @@ def plot_hardness_for_type(
         fig_save_dir: str
 ) -> List[np.ndarray]:
     """
-    For a given hardness type (e.g., 'logit_margins'), find all model .pkl files
-    that contain that type in their name (excluding real_test files), average over
-    model indices, and plot a histogram for each model. If a real_test file
-    named `real_test_{hardness_type}.pkl` exists, overlay its hardness distribution.
+    Computes KL divergence for all checkpoints (required for correlation/metrics),
+    and generates a stacked Ridge Plot (Option B) for milestone checkpoints:
+    1st (index 0), 5th (index 4), 15th (index 14), and the last checkpoint.
     """
-    n_files = len(model_files)
-    cols = min(4, n_files)
-    rows = (n_files + cols - 1) // cols
+    kl_divs, checkpoint_hardness_data, curves, eps = [], [], [], 1e-10
 
-    fig_hist, axes_hist = plt.subplots(rows, cols, figsize=(16, 10))
-    axes_hist = axes_hist.flatten()
+    # Common bounds for density histograms
+    vmin = np.min(real_hardness)
+    vmax = np.max(real_hardness)
 
-    kl_divs = []
-
-    # For each model file, compute averaged hardness and plot histogram
-    for ax_hist, fpath in zip(axes_hist, model_files):
+    for fpath in model_files:
         hardness = compute_avg_hardness_per_model(fpath)
+        checkpoint_hardness_data.append((fpath, hardness))
+        vmin = min(vmin, np.min(hardness))
+        vmax = max(vmax, np.max(hardness))
 
-        # ---- Histogram (density) ----
-        ax_hist.hist(hardness, bins=50, alpha=0.7, edgecolor='black', density=True, label='Model')
-        ax_hist.hist(real_hardness, bins=50, histtype='step', color='black', linewidth=2, density=True, label='Real')
-        ax_hist.set_xlabel('Hardness')
-        ax_hist.set_ylabel('Density')
+    bins = np.linspace(vmin, vmax, 100)
+    hist_real, _ = np.histogram(real_hardness, bins=bins, density=True)
+    prob_real = hist_real / np.sum(hist_real)
 
-        # ---- KL divergence (Real vs Synthetic) ----
-        # Define common bins covering both distributions
-        vmin = min(np.min(hardness), np.min(real_hardness))
-        vmax = max(np.max(hardness), np.max(real_hardness))
-        bins = np.linspace(vmin, vmax, 50)   # 50 bins as in the plots
-
-        # Histograms as counts (not density)
-        hist_model, _ = np.histogram(hardness, bins=bins)
-        hist_real, _ = np.histogram(real_hardness, bins=bins)
-
-        # Convert counts to probabilities
+    # Compute KL divergence for all checkpoints
+    for _, hardness in checkpoint_hardness_data:
+        hist_model, _ = np.histogram(hardness, bins=bins, density=True)
         prob_model = hist_model / np.sum(hist_model)
-        prob_real = hist_real / np.sum(hist_real)
-
-        # Laplace smoothing (add small epsilon) to avoid log(0)
-        eps = 1e-10
         prob_model = np.clip(prob_model, eps, 1.0)
-        prob_real = np.clip(prob_real, eps, 1.0)
 
-        # KL(real || model)  --  how different is model from real?
         kl_div = np.sum(prob_real * np.log(prob_real / prob_model))
         kl_divs.append(kl_div)
 
-        # Display on the histogram subplot (top‑left corner)
-        ax_hist.text(0.05, 0.95, f'KL = {kl_div:.3f}', transform=ax_hist.transAxes, verticalalignment='top',
-                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        ax_hist.set_title(os.path.basename(fpath).replace('.pkl', ''))
+    # ---- Ridge Plot for milestone checkpoints ----
+    indices_to_plot = [len(model_files) - 1, 14, 4, 0]
 
-    # Hide any unused subplots
-    for ax in axes_hist[n_files:]:
-        ax.axis('off')
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    fig_hist.suptitle(f"Hardness type: {hardness_type} – Histograms", fontsize=14)
-    fig_hist.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_hist.savefig(os.path.join(fig_save_dir, f"hardness_histograms.png"), dpi=150, bbox_inches='tight')
+    x_vals = 0.5 * (bins[:-1] + bins[1:])
+    real_density, _ = np.histogram(real_hardness, bins=bins, density=True)
+
+    # Setup vertical stacking spacing
+    max_density = max(np.max(real_density),
+                      max([np.max(np.histogram(h, bins=bins, density=True)[0]) for _, h in checkpoint_hardness_data]))
+    spacing = max_density * 0.65
+
+    # Bottom reference: Real Data
+    curves.append(('Real Data (Target)', real_density, 'black', 0.0))
+
+    # Add milestone checkpoints stacked upwards
+    for rank, idx in enumerate(indices_to_plot):
+        fpath, hardness = checkpoint_hardness_data[idx]
+        epoch_label = os.path.basename(fpath).replace('.pkl', '').split('_')[1]
+        kl_val = kl_divs[idx]
+        density, _ = np.histogram(hardness, bins=bins, density=True)
+        y_offset = (rank + 1) * spacing
+        curves.append((f'Checkpoint {idx + 1} (Epoch {epoch_label}, KL={kl_val:.3f})', density, f'C{rank}', y_offset))
+
+    # Plot the stacked ridges with filled areas
+    for label, density, color, y_offset in curves:
+        y_vals = density + y_offset
+        ax.plot(x_vals, y_vals, color=color, linewidth=1.5 if color != 'black' else 2.5, label=label)
+        ax.fill_between(x_vals, y_offset, y_vals, color=color, alpha=0.3 if color != 'black' else 0.1)
+
+    ax.set_xlabel('Hardness', fontsize=12)
+    ax.set_ylabel('Hardness spectrum (Stacked over Training)', fontsize=12)
+    ax.set_title(f'Hardness Spectrum Evolution (Ridge Plot) – {hardness_type}', fontsize=14)
+    ax.grid(True, linestyle=':', alpha=0.4, axis='x')
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(fig_save_dir, "hardness_ridge_plot.png"), dpi=180, bbox_inches='tight')
+    plt.close(fig)
+
     return kl_divs
 
 
 def load_labels(dataset: IndexedDataset) -> np.ndarray:
-    """
-    Load the test set labels for the given dataset.Returns a 1D numpy array of integer labels (0-99) in the same order as the hardness arrays.
-    """
     labels = []
     for i in range(len(dataset)):
         labels.append(dataset[i][1])
@@ -134,12 +141,7 @@ def load_labels(dataset: IndexedDataset) -> np.ndarray:
 
 
 def compute_class_means(hardness: np.ndarray, labels: np.ndarray, num_classes: int = 100) -> np.ndarray:
-    """
-    Given hardness per sample and corresponding class labels, compute mean hardness per class.
-    Classes with no samples get NaN.
-    """
     class_means = np.full(num_classes, np.nan)
-
     for c in range(num_classes):
         mask = (labels == c)
         if np.any(mask):
@@ -155,15 +157,6 @@ def plot_class_hardness(
         fig_save_dir: str,
         num_classes: int = 100
 ) -> List[np.ndarray]:
-    """
-    For a given hardness type, compute per-class mean hardness for real and all models,
-    then create a figure with one subplot per model.
-    In each subplot:
-      - A black line shows the real class means (classes sorted by real hardness).
-      - Bars show the model's class means.
-      - Mean Errors are displayed in the top‑right corner.
-    X‑axis ticks are removed because there are too many classes.
-    """
     _, _, _, test_set = load_real_dataset(dataset_name)
     real_labels = load_labels(test_set)
     real_class_means = compute_class_means(real_hardness, real_labels, num_classes)
@@ -188,7 +181,7 @@ def plot_class_hardness(
     valid_real = ~np.isnan(real_class_means)
     sorted_indices = np.argsort(real_class_means[valid_real])
     valid_classes = np.arange(num_classes)[valid_real]
-    sorted_classes = valid_classes[sorted_indices]  # class IDs in ascending real hardness
+    sorted_classes = valid_classes[sorted_indices]
     sorted_real_means = real_class_means[sorted_classes]
 
     n_files = len(model_files)
@@ -198,7 +191,7 @@ def plot_class_hardness(
     fig, axes = plt.subplots(rows, cols, figsize=(18, 12))
     axes = axes.flatten()
 
-    x_positions = np.arange(len(sorted_classes))   # x coordinates for bars
+    x_positions = np.arange(len(sorted_classes))
     mean_errors = []
 
     for idx, (ax, fpath) in enumerate(zip(axes, model_files)):
@@ -227,11 +220,11 @@ def plot_class_hardness(
     fig.suptitle(f"Class-wise Hardness – {hardness_type} (real line + model bars)", fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(os.path.join(fig_save_dir, f"class_hardness_spectra.png"), dpi=150, bbox_inches='tight')
+    plt.close(fig)
     return mean_errors
 
 
 def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
-    # Each row represents a checkpoint; each column a metric.
     metric_names = list(metrics.keys())
     data = np.column_stack([metrics[name] for name in metric_names])
 
@@ -244,9 +237,6 @@ def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
                 if i == j:
                     corr[i, j] = 1.0
                     p_vals[i, j] = 0.0
-                elif method == "pearson":
-                    result = corr_func(data[:, i], data[:, j])
-                    corr[i, j], p_vals[i, j] = result.statistic, result.pvalue
                 else:
                     result = corr_func(data[:, i], data[:, j])
                     corr[i, j], p_vals[i, j] = result.statistic, result.pvalue
@@ -265,12 +255,11 @@ def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
 
         ax.set_title(f"{method.capitalize()} correlations")
         fig.tight_layout()
-        fig.savefig(os.path.join(fig_save_dir, f"{method}_correlation_matrix.png"), dpi=180,  bbox_inches="tight")
+        fig.savefig(os.path.join(fig_save_dir, f"{method}_correlation_matrix.png"), dpi=180, bbox_inches="tight")
         plt.close(fig)
 
 
 def plot_metrics(metrics: Dict[str, Dict[str, np.ndarray]], fig_save_dir: str):
-    """Save a six-panel metric figure and Pearson/Spearman correlation matrices."""
     global_lenghts = []
     for hardness_type in metrics.keys():
         lengths = {len(v) for v in metrics[hardness_type].values()}
@@ -279,13 +268,11 @@ def plot_metrics(metrics: Dict[str, Dict[str, np.ndarray]], fig_save_dir: str):
             raise ValueError(f"Metric lengths do not match with {hardness_type}: "
                              f"{ {name: len(v) for name, v in metrics[hardness_type].items()} }")
     if any(s != global_lenghts[0] for s in global_lenghts):
-        raise ValueError(f'Metric lenghts do not match across hardness types: {global_lenghts}.')
+        raise ValueError(f'Metric lengths do not match across hardness types: {global_lenghts}.')
 
-    print(global_lenghts)
     n = global_lenghts[0].pop()
     x = np.arange(n)
 
-    # Five individual plots plus one combined, standardized plot.
     fig, axes = plt.subplots(2, 2, figsize=(18, 9))
     axes = axes.ravel()
 
@@ -316,7 +303,6 @@ def main(dataset_name: str):
     for gen_architecture in ['edm', 'stylegan']:
         metrics = {}
         for hardness_type in tqdm(hardness_types):
-            # Separate the real_test file for this type and model files
             real_file, model_files, snapshot_files, metrics[hardness_type] = None, [], [], {}
             for f in all_files:
                 basename = os.path.basename(f)
@@ -336,14 +322,16 @@ def main(dataset_name: str):
             model_files = sort_models(model_files)
             fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture, hardness_type)
             os.makedirs(fig_save_dir, exist_ok=True)
-            kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
 
-            metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
-                                      "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
-            plot_correlations(metrics[hardness_type], fig_save_dir)
-        fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
-        plot_metrics(metrics, fig_save_dir)
+            # Generates the stacked ridge plot for milestones and computes all KL divs
+            kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
+            #mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
+
+            #metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
+            #                          "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
+            #plot_correlations(metrics[hardness_type], fig_save_dir)
+        #fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
+        #plot_metrics(metrics, fig_save_dir)
 
 
 if __name__ == "__main__":
