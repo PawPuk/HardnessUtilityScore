@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import shutil
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import zipfile
 
 import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ def load_IS_and_FID(
     with zipfile.ZipFile(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{gen_architecture}_metrics.zip'),
                          'r') as zip_ref:
         zip_ref.extractall(os.path.join(ROOT, 'synthetic_data', dataset_name))
-    for snapshot_file in set(snapshot_files):
+    for snapshot_file in snapshot_files:
         with open(os.path.join(ROOT, 'synthetic_data', dataset_name, f'{gen_architecture}_metrics',
                                snapshot_file)) as f:
             d = json.load(f)
@@ -154,14 +154,14 @@ def plot_class_hardness(
         hardness_type: str,
         fig_save_dir: str,
         num_classes: int = 100
-) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
+) -> List[np.ndarray]:
     """
     For a given hardness type, compute per-class mean hardness for real and all models,
     then create a figure with one subplot per model.
     In each subplot:
       - A black line shows the real class means (classes sorted by real hardness).
       - Bars show the model's class means.
-      - RMSE and RME are displayed in the top‑right corner.
+      - Mean Errors are displayed in the top‑right corner.
     X‑axis ticks are removed because there are too many classes.
     """
     _, _, _, test_set = load_real_dataset(dataset_name)
@@ -180,7 +180,6 @@ def plot_class_hardness(
 
         _, synthetic_set = load_synthetic_dataset(dataset_name, generative_model, False)
         synthetic_labels = load_labels(synthetic_set)
-        print(f'{fpath} - {len(synthetic_labels)} labels.')
         means = compute_class_means(h, synthetic_labels, num_classes)
         model_class_means.append(means)
 
@@ -200,7 +199,7 @@ def plot_class_hardness(
     axes = axes.flatten()
 
     x_positions = np.arange(len(sorted_classes))   # x coordinates for bars
-    rmses, rmes, mses, mes, = [], [], [], []
+    mean_errors = []
 
     for idx, (ax, fpath) in enumerate(zip(axes, model_files)):
         model_means = model_class_means[idx]
@@ -210,13 +209,9 @@ def plot_class_hardness(
         ax.plot(x_positions, sorted_real_means, color='black', linestyle='-', linewidth=2, label='Real')
 
         errors = sorted_model_means - sorted_real_means
-        rmse = np.sqrt(np.mean(errors ** 2))
-        rmses.append(rmse)
-        mses.append(np.mean(errors ** 2))
-        mes.append(np.mean(errors))
-        rme = np.mean(errors / np.abs(sorted_real_means))
-        rmes.append(rme)
-        ax.text(0.95, 0.95, f'rmse = {rmse:.3f}\nrme = {rme:.3f}', transform=ax.transAxes, verticalalignment='top',
+        mean_error = np.mean(errors)
+        mean_errors.append(mean_error)
+        ax.text(0.95, 0.95, f'me = {mean_error:.3f}', transform=ax.transAxes, verticalalignment='top',
                 horizontalalignment='right', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
         ax.set_xticks([])
@@ -232,45 +227,7 @@ def plot_class_hardness(
     fig.suptitle(f"Class-wise Hardness – {hardness_type} (real line + model bars)", fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(os.path.join(fig_save_dir, f"class_hardness_spectra.png"), dpi=150, bbox_inches='tight')
-    return rmses, rmes, mses, mes
-
-
-def plot_metrics(metrics: dict[str, np.ndarray], fig_save_dir: str):
-    """Save a six-panel metric figure and Pearson/Spearman correlation matrices."""
-    metric_names = list(metrics.keys())
-    lengths = {len(v) for v in metrics.values()}
-    if len(lengths) != 1:
-        raise ValueError(f"Metric lengths do not match: { {name: len(v) for name, v in metrics.items()} }")
-
-    n = next(iter(lengths))
-    x = np.arange(n)
-
-    # Five individual plots plus one combined, standardized plot.
-    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
-    axes = axes.ravel()
-
-    for i, name in enumerate(metric_names):
-        axes[i].plot(x, metrics[name], marker="o", linewidth=1.8)
-        axes[i].set_title(name)
-        axes[i].set_xlabel("Checkpoints")
-        axes[i].set_ylabel(name)
-        axes[i].grid(True, linestyle=":", alpha=0.5)
-
-    combined_ax = axes[7]
-    for name, y in metrics.items():
-        scaled_y = y / np.max(np.abs(y))
-        combined_ax.plot(x, scaled_y, marker="o", linewidth=1.8, label=name)
-
-    combined_ax.set_title("All metrics (standardized)")
-    combined_ax.set_xlabel("Checkpoint")
-    combined_ax.set_ylabel("Z-score")
-    combined_ax.grid(True, linestyle=":", alpha=0.5)
-    combined_ax.legend(fontsize=9)
-
-    fig.suptitle("Evaluation metrics", fontsize=15)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig(os.path.join(fig_save_dir, "metrics_over_checkpoints.png"), dpi=180, bbox_inches="tight")
-    plt.close(fig)
+    return mean_errors
 
 
 def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
@@ -298,7 +255,7 @@ def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
         image = ax.imshow(corr, vmin=-1, vmax=1, cmap="coolwarm")
         fig.colorbar(image, ax=ax, label="Correlation coefficient")
 
-        ax.set_xticks(range(len(metric_names)), metric_names, rotation=35, ha="right")
+        ax.set_xticks(range(len(metric_names)), metric_names)
         ax.set_yticks(range(len(metric_names)), metric_names)
 
         for i in range(len(metric_names)):
@@ -312,19 +269,55 @@ def plot_correlations(metrics: dict[str, np.ndarray], fig_save_dir: str):
         plt.close(fig)
 
 
+def plot_metrics(metrics: Dict[str, Dict[str, np.ndarray]], fig_save_dir: str):
+    """Save a six-panel metric figure and Pearson/Spearman correlation matrices."""
+    global_lenghts = []
+    for hardness_type in metrics.keys():
+        lengths = {len(v) for v in metrics[hardness_type].values()}
+        global_lenghts.append(lengths)
+        if len(lengths) != 1:
+            raise ValueError(f"Metric lengths do not match with {hardness_type}: "
+                             f"{ {name: len(v) for name, v in metrics[hardness_type].items()} }")
+    if any(s != global_lenghts[0] for s in global_lenghts):
+        raise ValueError(f'Metric lenghts do not match across hardness types: {global_lenghts}.')
+
+    print(global_lenghts)
+    n = global_lenghts[0].pop()
+    x = np.arange(n)
+
+    # Five individual plots plus one combined, standardized plot.
+    fig, axes = plt.subplots(2, 2, figsize=(18, 9))
+    axes = axes.ravel()
+
+    for i, hardness_type in enumerate(metrics.keys()):
+        for metric_name, y in metrics[hardness_type].items():
+            scaled_y = y / np.max(np.abs(y))
+            axes[i].plot(x, scaled_y, marker='o', linewidth=2, label=metric_name)
+            axes[i].set_title(f'Standardized metrics for {hardness_type}')
+            axes[i].set_xlabel('Checkpoints')
+            axes[i].set_ylabel('Z-score')
+            axes[i].grid(True, linestyle=':', alpha=0.5)
+            axes[i].legend(fontsize=9)
+
+    fig.suptitle("Evaluation metrics", fontsize=15)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(fig_save_dir, "metrics_over_checkpoints.png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
 
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
-    hardness_types = ["softmax_margins"]
+    hardness_types = ["softmax_margins", 'logit_margins', 'softmax_confidences', 'logit_confidences']
 
-    all_files = glob(os.path.join(base_dir, "*.pkl"))
+    all_files = sorted(glob(os.path.join(base_dir, "*.pkl")))
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    for gen_architecture in ['edm']:
+    for gen_architecture in ['edm', 'stylegan']:
+        metrics = {}
         for hardness_type in tqdm(hardness_types):
             # Separate the real_test file for this type and model files
-            real_file, model_files, snapshot_files = None, [], []
+            real_file, model_files, snapshot_files, metrics[hardness_type] = None, [], [], {}
             for f in all_files:
                 basename = os.path.basename(f)
                 if gen_architecture in basename:
@@ -344,13 +337,13 @@ def main(dataset_name: str):
             fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture, hardness_type)
             os.makedirs(fig_save_dir, exist_ok=True)
             kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
+            mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
 
-            metrics = {"RMSE": np.asarray(errors[0]), "RME": np.asarray(errors[1]), 'MSES': np.asarray(errors[2]),
-                       'MES': np.asarray(errors[3]), "KL_DIV": np.asarray(kl_divs), "IS": np.asarray(IS_metrics),
-                       "FID": np.asarray(FID_metrics)}
-            plot_metrics(metrics, fig_save_dir)
-            plot_correlations(metrics, fig_save_dir)
+            metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
+                                      "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
+            plot_correlations(metrics[hardness_type], fig_save_dir)
+        fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
+        plot_metrics(metrics, fig_save_dir)
 
 
 if __name__ == "__main__":
