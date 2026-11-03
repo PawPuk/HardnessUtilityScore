@@ -14,8 +14,8 @@ from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
 
 from src.config.config import ROOT
-from src.data.datasets import IndexedDataset
 from src.data.loading import load_real_dataset, load_synthetic_dataset
+from src.utils.structures import load_labels
 
 
 def compute_avg_hardness_per_model(pkl_path: str) -> np.ndarray:
@@ -124,13 +124,6 @@ def plot_hardness_for_type(
     plt.close(fig)
 
     return kl_divs
-
-
-def load_labels(dataset: IndexedDataset) -> np.ndarray:
-    labels = []
-    for i in range(len(dataset)):
-        labels.append(dataset[i][1])
-    return np.array(labels)
 
 
 def compute_class_means(hardness: np.ndarray, labels: np.ndarray, num_classes: int = 100) -> np.ndarray:

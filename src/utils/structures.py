@@ -3,6 +3,10 @@ import os
 import re
 from typing import List
 
+import numpy as np
+
+from src.data.datasets import IndexedDataset
+
 
 def get_latest_model_indices(save_dir: str, num_epochs: int, max_dataset_count: int) -> List[int]:
     """Find the latest trained model index for each version of the dataset. This makes it easier to add more models
@@ -25,3 +29,10 @@ def defaultdict_to_dict(d):
     elif isinstance(d, dict):  # catch plain dicts too
         d = {k: defaultdict_to_dict(v) for k, v in d.items()}
     return d
+
+
+def load_labels(dataset: IndexedDataset) -> np.ndarray:
+    labels = []
+    for i in range(len(dataset)):
+        labels.append(dataset[i][1])
+    return np.array(labels)

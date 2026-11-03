@@ -31,13 +31,14 @@ class SyntheticImageDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir: str, transform=None):
         self.paths = sorted(glob.glob(os.path.join(root_dir, "*.jpg")))
         self.transform = transform
+        self._images = [Image.open(p).convert('RGB') for p in self.paths]
+        self._labels = [int(os.path.basename(p).split('_')[1].split('.')[0]) for p in self.paths]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.paths)
 
     def __getitem__(self, idx):
-        img = Image.open(self.paths[idx]).convert('RGB')
-        label = int(os.path.basename(self.paths[idx]).split('_')[1].split('.')[0])
+        img = self._images[idx]
         if self.transform:
             img = self.transform(img)
-        return img, label
+        return img, self._labels[idx]
