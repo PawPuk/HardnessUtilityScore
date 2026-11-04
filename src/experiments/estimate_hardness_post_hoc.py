@@ -27,7 +27,7 @@ def estimate_and_save_post_hoc_hardness(
     logit_confidences, softmax_confidences, logit_margins, softmax_margins = {}, {}, {}, {}
     for i in tqdm(model_paths[0].keys(), desc='Iterating through model indices'):
         model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
-        model.load_state_dict(torch.load(model_paths[0][i]))
+        model.load_state_dict(torch.load(model_paths[0][i], map_location=DEVICE))
         model.eval()
         logit_confidences[i], softmax_confidences[i], logit_margins[i], softmax_margins[i] = \
             compute_margins_and_confidences(model, loader)
@@ -96,9 +96,9 @@ def main(
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train an ensemble of models on CIFAR-100.')
+    parser = argparse.ArgumentParser(description='Estimate post-hoc hardness on CIFAR-100 or Tiny ImageNet.')
     parser.add_argument('--dataset_name', type=str, required=True,
-                        choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
+                        choices=['CIFAR-100', 'TinyImageNet'], help='Dataset name: CIFAR-100, TinyImageNet')
     parser.add_argument('--overwrite', action='store_true', default=False,
                         help='Overwrite existing margin files if they already exist.')
 

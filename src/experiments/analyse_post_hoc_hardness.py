@@ -89,7 +89,7 @@ def plot_hardness_for_type(
         kl_divs.append(kl_div)
 
     # ---- Ridge Plot for milestone checkpoints ----
-    indices_to_plot = [len(model_files) - 1, 14, 4, 0]
+    indices_to_plot = [len(model_files) - 1, 6, 3, 0]
     fig, ax = plt.subplots(figsize=(10, 6))
 
     x_vals = 0.5 * (bins[:-1] + bins[1:])
@@ -287,7 +287,7 @@ def main(dataset_name: str):
     if not all_files:
         raise Exception(f"No .pkl files found in {base_dir}")
 
-    for gen_architecture in ['edm', 'stylegan']:
+    for gen_architecture in ['stylegan', 'edm']:
         metrics = {}
         for hardness_type in tqdm(hardness_types):
             real_file, model_files, snapshot_files, metrics[hardness_type] = None, [], [], {}
@@ -304,8 +304,6 @@ def main(dataset_name: str):
                         model_files.append(f)
             real_hardness = compute_avg_hardness_per_model(real_file)
 
-            IS_metrics, FID_metrics = load_IS_and_FID(dataset_name, gen_architecture, snapshot_files)
-
             model_files = sort_models(model_files)
             fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture, hardness_type)
             os.makedirs(fig_save_dir, exist_ok=True)
@@ -314,17 +312,19 @@ def main(dataset_name: str):
             mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
             print(gen_architecture, hardness_type, kl_divs, mean_errors)
 
-            metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
-                                      "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
-            plot_correlations(metrics[hardness_type], fig_save_dir)
-        fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
-        plot_metrics(metrics, fig_save_dir)
+            # IS_metrics, FID_metrics = load_IS_and_FID(dataset_name, gen_architecture, snapshot_files)
+
+            # metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
+            #                           "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
+            # plot_correlations(metrics[hardness_type], fig_save_dir)
+        # fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
+        # plot_metrics(metrics, fig_save_dir)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare hardness distributions between real and synthetic data.')
     parser.add_argument('--dataset_name', type=str, required=True,
-                        choices=['CIFAR-100'], help='Dataset name: CIFAR-100')
+                        choices=['CIFAR-100', 'TinyImageNet'], help='Dataset name: CIFAR-100, TinyImageNet')
 
     args = parser.parse_args()
     main(args.dataset_name)

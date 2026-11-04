@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 import math
 import os
 import random
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import torch
@@ -13,7 +13,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 from src.config.config import get_config, ROOT
-from src.data.datasets import IndexedDataset, SyntheticImageDataset
+from src.data.datasets import IndexedDataset, SyntheticImageDataset, TinyImageNetValDataset
 
 
 def get_transform(
@@ -25,7 +25,7 @@ def get_transform(
     if apply_augmentation:
         train_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, padding=4),
+            transforms.RandomCrop(config['img_size'], padding=config['img_size'] // 8),
             transforms.ToTensor(),
             transforms.Normalize(config['mean'], config['std'])
         ])
@@ -132,15 +132,13 @@ def get_dataloader(
 def load_real_dataset(
         dataset_name: str,
         shuffle: bool = False,
-        apply_augmentation: bool = False,
-        synthetic_loader: Optional[DataLoader] = None
+        apply_augmentation: bool = False
 ) -> Tuple[DataLoader[IndexedDataset], IndexedDataset, DataLoader[IndexedDataset], IndexedDataset]:
     """Load the dataset giving control over shuffling and augmentation. Currently only supports CIFAR-100.
 
     :param dataset_name: Name of the dataset to load (only accepts `CIFAR-100`).
     :param shuffle: Raise this flag to shuffle the training dataset.
     :param apply_augmentation: Raise this flag to apply data augmentation to the training set.
-    :param synthetic_loader: Pass this to adjust the distribution of test set (used for custom FID).
 
     :return: Tuple containing DataLoader for the training set, training set, DataLoader for the test set, and test set.
     """
@@ -153,14 +151,16 @@ def load_real_dataset(
                                                      transform=train_transform)
         test_set = torchvision.datasets.CIFAR100(root=os.path.join(ROOT, 'data'), train=False, download=True,
                                                  transform=test_transform)
+    elif dataset_name == 'TinyImageNet':
+        data_root = os.path.join(ROOT, 'data', 'tiny-imagenet')
+        training_set = torchvision.datasets.ImageFolder(root=os.path.join(data_root, 'train'),
+                                                        transform=train_transform)
+        test_set = TinyImageNetValDataset(root_dir=data_root, transform=test_transform)
     else:
         raise Exception
 
     training_set = IndexedDataset(training_set)
     test_set = IndexedDataset(test_set)
-
-    if synthetic_loader is not None:
-        test_set = downsample_test_set_to_match_synthetic(test_set, synthetic_loader)
 
     training_loader = get_dataloader(training_set, config['batch_size'], shuffle)
     test_loader = get_dataloader(test_set, config['batch_size'])
@@ -178,7 +178,7 @@ def load_synthetic_dataset(
     unnormalized_transform, normalized_transform = get_transform(False, config)
     path = os.path.join(ROOT, 'synthetic_data', dataset_name, generative_model)
 
-    if dataset_name == 'CIFAR-100':
+    if dataset_name in ['CIFAR-100', 'TinyImageNet']:
         if normalize:
             synthetic_set = SyntheticImageDataset(path, transform=normalized_transform)
         else:

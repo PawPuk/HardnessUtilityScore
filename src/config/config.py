@@ -62,11 +62,11 @@ dataset_configs = {
     'CIFAR-100': {
         # Training hyperparameters
         'batch_size': 128,
-        'num_epochs': 200,
+        'num_epochs': 100,
         'lr': 0.1,
         'momentum': 0.9,
         'weight_decay': 0.0005,
-        'lr_decay_milestones': [60, 120, 160],
+        'lr_decay_milestones': [30, 60, 80],
 
         # Dataset information
         'num_classes': 100,
@@ -74,6 +74,7 @@ dataset_configs = {
         'std': (0.2675, 0.2565, 0.2761),
         'num_training_samples': [500 for _ in range(100)],
         'num_test_samples': [100 for _ in range(100)],
+        'img_size': 32,
         'class_names': [
             'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle', 'bicycle', 'bottle',
             'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel', 'can', 'castle', 'caterpillar', 'cattle',
@@ -92,6 +93,24 @@ dataset_configs = {
         'num_models_per_dataset': 3,    # number of models trained on each dataset variant
 
         # Other
+        'save_epoch': 20,
+        'save_dir': os.path.join(ROOT, 'Models/')
+    },
+    'TinyImageNet': {
+        'batch_size': 128,
+        'num_epochs': 60,
+        'lr': 0.1,
+        'momentum': 0.9,
+        'weight_decay': 1e-4,
+        'lr_decay_milestones': [50, 55],
+
+        'num_classes': 200,
+        'mean': (0.4810, 0.4574, 0.4078),
+        'std': (0.2146, 0.2104, 0.2138),
+        'num_training_samples': [500 for _ in range(200)],
+        'num_test_samples': [50 for _ in range(200)],
+        'img_size': 64,
+
         'save_epoch': 20,
         'save_dir': os.path.join(ROOT, 'Models/')
     }
