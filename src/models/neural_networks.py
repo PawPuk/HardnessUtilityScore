@@ -1,6 +1,40 @@
+import timm
 import torch
 import torch.nn as nn
 import torchvision.models as models
+
+
+def load_tinyimagenet_vit(checkpoint_path: str, num_classes: int = 200, device: str = 'cpu'):
+    """
+    Automatically detects the ViT architecture from the filename and loads it.
+    """
+    model = timm.create_model('cait_s36_384', num_classes=num_classes)
+
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    if isinstance(checkpoint, dict):
+        if 'model' in checkpoint:
+            state_dict = checkpoint['model']
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith('module.'):
+            new_state_dict[k[7:]] = v
+        else:
+            new_state_dict[k] = v
+    state_dict = new_state_dict
+
+    model.load_state_dict(state_dict, strict=False)
+    print("✅ Successfully loaded CaiT weights.")
+
+    model.to(device)
+    model.eval()
+    return model
 
 
 class ResNet18LowRes(nn.Module):

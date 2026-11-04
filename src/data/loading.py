@@ -31,10 +31,12 @@ def get_transform(
         ])
     else:
         train_transform = transforms.Compose([
+            transforms.Resize((config['img_size'], config['img_size'])),
             transforms.ToTensor()
         ])
 
     test_transform = transforms.Compose([
+        transforms.Resize((config['img_size'], config['img_size'])),
         transforms.ToTensor(),
         transforms.Normalize(config['mean'], config['std']),
     ])

@@ -109,7 +109,7 @@ dataset_configs = {
         'std': (0.2146, 0.2104, 0.2138),
         'num_training_samples': [500 for _ in range(200)],
         'num_test_samples': [50 for _ in range(200)],
-        'img_size': 64,
+        'img_size': 384,
 
         'save_epoch': 20,
         'save_dir': os.path.join(ROOT, 'Models/')

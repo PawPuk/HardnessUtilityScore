@@ -15,19 +15,24 @@ from tqdm import tqdm
 from src.config.config import DEVICE, ROOT, get_config
 from src.data.loading import load_synthetic_dataset, load_real_dataset
 from src.measures.hardness_estimators import compute_margins_and_confidences
-from src.models.neural_networks import ResNet18LowRes
+from src.models.neural_networks import load_tinyimagenet_vit, ResNet18LowRes
 from src.utils.io import extract_paths_to_pretrained_models
 
 
 def estimate_and_save_post_hoc_hardness(
         loader: torch.utils.data.DataLoader,
         model_paths: Dict[int, Dict[int, str]],
-        num_classes: int
+        num_classes: int,
+        dataset_name: str
 ) -> Tuple[Dict[int, List[float]], Dict[int, List[float]], Dict[int, List[float]], Dict[int, List[float]]]:
     logit_confidences, softmax_confidences, logit_margins, softmax_margins = {}, {}, {}, {}
-    for i in tqdm(model_paths[0].keys(), desc='Iterating through model indices'):
-        model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
-        model.load_state_dict(torch.load(model_paths[0][i], map_location=DEVICE))
+    for i in model_paths[0].keys():
+        if dataset_name == 'CIFAR-100':
+            model = ResNet18LowRes(num_classes=num_classes).to(DEVICE)
+            model.load_state_dict(torch.load(model_paths[0][i], map_location=DEVICE))
+        else:
+            path = model_paths[0][i]
+            model = load_tinyimagenet_vit(path, num_classes=num_classes, device=DEVICE)
         model.eval()
         logit_confidences[i], softmax_confidences[i], logit_margins[i], softmax_margins[i] = \
             compute_margins_and_confidences(model, loader)
@@ -63,7 +68,7 @@ def main(
         print(f'Estimating post-hoc hardness for {generative_model}.')
         synthetic_loader, _ = load_synthetic_dataset(dataset_name, generative_model, True)
         logit_confidences, softmax_confidences, logit_margins, softmax_margins = estimate_and_save_post_hoc_hardness(
-            synthetic_loader, model_paths, num_classes
+            synthetic_loader, model_paths, num_classes, dataset_name
         )
         with open(os.path.join(save_dir, f"{generative_model}_logit_confidences.pkl"), 'wb') as file:
             pickle.dump(logit_confidences, file)
@@ -82,7 +87,7 @@ def main(
 
         _, _, test_loader, _ = load_real_dataset(dataset_name)
         logit_confidences, softmax_confidences, logit_margins, softmax_margins = estimate_and_save_post_hoc_hardness(
-            test_loader, model_paths, num_classes
+            test_loader, model_paths, num_classes, dataset_name
         )
 
         with open(os.path.join(save_dir, f'real_test_logit_confidences.pkl'), 'wb') as file:
