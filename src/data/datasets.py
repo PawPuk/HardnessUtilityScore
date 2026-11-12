@@ -28,14 +28,22 @@ class IndexedDataset(torch.utils.data.Dataset):
 
 
 class SyntheticImageDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir: str, transform=None):
-        self.paths = sorted(glob.glob(os.path.join(root_dir, "*.jpg")))
+    def __init__(self, root_dir: str, transform=None, label_mapping: dict = None):
         self.transform = transform
-        self._images = [Image.open(p).convert('RGB') for p in self.paths]
-        self._labels = [int(os.path.basename(p).split('_')[1].split('.')[0]) for p in self.paths]
+        self._images = []
+        self._labels = []
+
+        paths = sorted(glob.glob(os.path.join(root_dir, "*.jpg")))
+
+        for p in paths:
+            # Extract the original HF label from the filename (e.g., "54_0.jpg" -> 54)
+            raw_label = int(os.path.basename(p).split('_')[1].split('.')[0])
+            mapped_label = label_mapping[raw_label] if label_mapping is not None else raw_label
+            self._images.append(Image.open(p).convert('RGB'))
+            self._labels.append(mapped_label)
 
     def __len__(self) -> int:
-        return len(self.paths)
+        return len(self._images)
 
     def __getitem__(self, idx):
         img = self._images[idx]
@@ -53,8 +61,9 @@ class TinyImageNetValDataset(torch.utils.data.Dataset):
         self.annotations_file = os.path.join(root_dir, 'val', 'val_annotations.txt')
 
         # Convert the WordNet IDs (e.g., 'n01443537') to integers 0-199 to match those in training set.
-        train_dir = os.path.join(root_dir, 'train')
-        self.classes = sorted(os.listdir(train_dir))
+        wnids_path = os.path.join(root_dir, 'wnids.txt')
+        with open(wnids_path, 'r') as f:
+            self.classes = [line.strip() for line in f if line.strip()]
         self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
 
         self.data = []

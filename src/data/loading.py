@@ -1,6 +1,7 @@
 """The data module: Provides two core Dataset subclasses, and the method for loading the data."""
 
 from collections import Counter, defaultdict
+import json
 import math
 import os
 import random
@@ -31,12 +32,10 @@ def get_transform(
         ])
     else:
         train_transform = transforms.Compose([
-            transforms.Resize((config['img_size'], config['img_size'])),
             transforms.ToTensor()
         ])
 
     test_transform = transforms.Compose([
-        transforms.Resize((config['img_size'], config['img_size'])),
         transforms.ToTensor(),
         transforms.Normalize(config['mean'], config['std']),
     ])
@@ -157,6 +156,16 @@ def load_real_dataset(
         data_root = os.path.join(ROOT, 'data', 'tiny-imagenet')
         training_set = torchvision.datasets.ImageFolder(root=os.path.join(data_root, 'train'),
                                                         transform=train_transform)
+        wnids_path = os.path.join(data_root, 'wnids.txt')
+        with open(wnids_path, 'r') as f:
+            wnids = [line.strip() for line in f if line.strip()]
+        if training_set.classes != wnids:
+            old_to_new = {training_set.class_to_idx[wnid]: i for i, wnid in enumerate(wnids)}
+            training_set.targets = [old_to_new[t] for t in training_set.targets]
+            training_set.samples = [(path, old_to_new[t]) for (path, t) in training_set.samples]
+            training_set.classes = wnids
+            training_set.class_to_idx = {wnid: i for i, wnid in enumerate(wnids)}
+
         test_set = TinyImageNetValDataset(root_dir=data_root, transform=test_transform)
     else:
         raise Exception
@@ -180,11 +189,33 @@ def load_synthetic_dataset(
     unnormalized_transform, normalized_transform = get_transform(False, config)
     path = os.path.join(ROOT, 'synthetic_data', dataset_name, generative_model)
 
+    label_mapping = None
+
+    if dataset_name == 'TinyImageNet':
+        # 1. Load the FIXED HF mapping (HF index -> Stanford WNID)
+        mapping_path = os.path.join(ROOT, 'synthetic_data', dataset_name, 'tinyimagenet_label_mapping_fixed.json')
+        with open(mapping_path, 'r') as f:
+            hf_idx_to_wnid = json.load(f)
+
+        # 2. Load Stanford wnids.txt (Stanford index -> Stanford WNID)
+        stanford_wnids_path = os.path.join(ROOT, 'data', 'tiny-imagenet', 'wnids.txt')
+        with open(stanford_wnids_path, 'r') as f:
+            stanford_wnids = [line.strip() for line in f if line.strip()]
+
+        wnid_to_stanford_idx = {wnid: i for i, wnid in enumerate(stanford_wnids)}
+
+        # 3. Create final mapping: HF index -> Stanford index
+        label_mapping = {}
+        for hf_idx_str, wnid in hf_idx_to_wnid.items():
+            hf_idx = int(hf_idx_str)
+            if wnid in wnid_to_stanford_idx:
+                label_mapping[hf_idx] = wnid_to_stanford_idx[wnid]
+
     if dataset_name in ['CIFAR-100', 'TinyImageNet']:
         if normalize:
-            synthetic_set = SyntheticImageDataset(path, transform=normalized_transform)
+            synthetic_set = SyntheticImageDataset(path, transform=normalized_transform, label_mapping=label_mapping)
         else:
-            synthetic_set = SyntheticImageDataset(path, transform=unnormalized_transform)
+            synthetic_set = SyntheticImageDataset(path, transform=unnormalized_transform, label_mapping=label_mapping)
     else:
         raise Exception
 
