@@ -13,7 +13,7 @@ import scipy
 from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
 
-from src.config.config import ROOT
+from src.config.config import ROOT, get_config
 from src.data.loading import load_real_dataset, load_synthetic_dataset
 from src.utils.structures import load_labels
 
@@ -89,7 +89,7 @@ def plot_hardness_for_type(
         kl_divs.append(kl_div)
 
     # ---- Ridge Plot for milestone checkpoints ----
-    indices_to_plot = [len(model_files) - 1, 6, 3, 0]
+    indices_to_plot = [12, 8, 4, 0] if len(checkpoint_hardness_data) > 3 else [2, 1, 0]
     fig, ax = plt.subplots(figsize=(10, 6))
 
     x_vals = 0.5 * (bins[:-1] + bins[1:])
@@ -189,6 +189,23 @@ def plot_class_hardness(
     indices_to_plot = [0, 4, len(model_files) - 1]
     linestyles = [':', '--', '-.']
 
+    correlation_rows = []
+    for rank, idx in enumerate(indices_to_plot):
+        sorted_model_means = model_class_means[idx][sorted_classes]
+        r, p = pearsonr(sorted_real_means, sorted_model_means)
+        correlation_rows.append({"checkpoint": idx + 1, "r": r, "p": p, "file": os.path.basename(model_files[idx])})
+
+    # ---- Pretty terminal table ----
+    print('\n', "=" * 96)
+    print(f"Pearson correlation: sorted real class hardness vs. model class hardness ({hardness_type})")
+    print("=" * 96)
+    print(f"{'Checkpoint':<12}{'Pearson r':>12}{'p-value':>14}  File")
+    print("-" * 96)
+    for row in correlation_rows:
+        print(f"{row['checkpoint']:<12} {row['r']:>12.4f}{row['p']:>14.3e}  {row['file']}")
+    print("=" * 96)
+    print()
+
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(x_positions, sorted_real_means, color='black', linestyle='-', linewidth=2.5, label='Real Data (Target)')
     for rank, idx in enumerate(indices_to_plot):
@@ -205,7 +222,8 @@ def plot_class_hardness(
     ax.grid(True, linestyle=':', alpha=0.4)
 
     fig.tight_layout()
-    fig.savefig(os.path.join(fig_save_dir, f"class_hardness_spectra.png"), dpi=180, bbox_inches='tight')
+    fig.savefig(os.path.join(fig_save_dir, "class_hardness_spectra.png"),
+                dpi=180, bbox_inches="tight")
     plt.close(fig)
 
     return mean_errors
@@ -281,7 +299,7 @@ def plot_metrics(metrics: Dict[str, Dict[str, np.ndarray]], fig_save_dir: str):
 
 def main(dataset_name: str):
     base_dir = os.path.join(ROOT, 'Results', dataset_name, "post_hoc_hardness_estimates")
-    hardness_types = ["softmax_margins", 'logit_margins', 'softmax_confidences', 'logit_confidences']
+    hardness_types = ['logit_margins', 'softmax_margins', 'logit_confidences', 'softmax_confidences']
 
     all_files = sorted(glob(os.path.join(base_dir, "*.pkl")))
     if not all_files:
@@ -309,16 +327,17 @@ def main(dataset_name: str):
             os.makedirs(fig_save_dir, exist_ok=True)
 
             kl_divs = plot_hardness_for_type(real_hardness, model_files, hardness_type, fig_save_dir)
-            mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir)
+            mean_errors = plot_class_hardness(dataset_name, real_hardness, model_files, hardness_type, fig_save_dir,
+                                              get_config(dataset_name)['num_classes'])
             print(gen_architecture, hardness_type, kl_divs, mean_errors)
 
-            # IS_metrics, FID_metrics = load_IS_and_FID(dataset_name, gen_architecture, snapshot_files)
+            IS_metrics, FID_metrics = load_IS_and_FID(dataset_name, gen_architecture, snapshot_files)
 
-            # metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
-            #                           "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
-            # plot_correlations(metrics[hardness_type], fig_save_dir)
-        # fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
-        # plot_metrics(metrics, fig_save_dir)
+            metrics[hardness_type] = {'ME': np.asarray(mean_errors), "KL_DIV": np.asarray(kl_divs),
+                                      "IS": np.asarray(IS_metrics), "FID": np.asarray(FID_metrics)}
+            plot_correlations(metrics[hardness_type], fig_save_dir)
+        fig_save_dir = os.path.join(ROOT, 'Figures', dataset_name, gen_architecture)
+        plot_metrics(metrics, fig_save_dir)
 
 
 if __name__ == "__main__":

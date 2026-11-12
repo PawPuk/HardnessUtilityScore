@@ -13,7 +13,7 @@ import numpy as np
 from torch.utils.data import Subset
 
 from src.config.config import ROOT, get_config
-from src.data.loading import get_dataloader, load_real_dataset, load_synthetic_dataset, IndexedDataset
+from src.data.loading import get_dataloader, load_real_dataset, load_synthetic_dataset
 from src.training.train_models import ModelTrainer
 from src.utils.structures import load_labels
 
@@ -27,9 +27,9 @@ def main(dataset_name: str, generative_architecture: str):
         if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f and generative_architecture in f
     )
     for i, zip_file in enumerate(generative_model_zips):
-        if generative_architecture == 'edm' and i not in [4, 14]:
+        if generative_architecture == 'edm' and i not in [0, 4, 14, 27]:
             continue
-        if generative_architecture == 'stylegan' and i not in [4, 14]:
+        if generative_architecture == 'stylegan' and i not in [0, 4, 43]:
             continue
         generative_model = os.path.splitext(zip_file)[0]
         with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:

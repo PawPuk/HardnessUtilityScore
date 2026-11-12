@@ -14,7 +14,7 @@ from src.training.train_models import ModelTrainer
 
 
 def main(dataset_name: str, generative_architecture: str):
-    print(DEVICE)
+    print(f'Using device: {DEVICE}')
     _, _, test_loader, _ = load_real_dataset(dataset_name)
 
     synth_root = os.path.join(ROOT, 'synthetic_data', dataset_name)
@@ -23,7 +23,7 @@ def main(dataset_name: str, generative_architecture: str):
         if os.path.isfile(os.path.join(synth_root, f)) and 'metrics' not in f and generative_architecture in f
     )
     for i, zip_file in enumerate(generative_model_zips):
-        if not i % 5 == 0:
+        if i not in [24, 25, 26]:
             continue
         generative_model = os.path.splitext(zip_file)[0]
         with zipfile.ZipFile(os.path.join(synth_root, f"{generative_model}.zip"), 'r') as zip_ref:
@@ -34,7 +34,7 @@ def main(dataset_name: str, generative_architecture: str):
         training_loaders = [synthetic_loader]
         save_suffix = f'{generative_model}'
         trainer = ModelTrainer(training_set_size, training_loaders, test_loader, dataset_name, save_suffix,
-                               estimate_hardness=False, save_probe_models=False)
+                               save_probe_models=False)
         trainer.train_ensemble()
 
         shutil.rmtree(os.path.join(synth_root, generative_model))
